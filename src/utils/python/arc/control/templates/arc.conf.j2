@@ -1,0 +1,62 @@
+# Template minimal arc.conf
+
+[common]
+{% if not host_cert %}
+hostname={{ frontend_ip }}
+{% else %}
+hostname={{ hostname }}
+{% endif %}
+
+{% if not host_cert %}
+x509_host_cert= {{ grid_security_path }}/{{ frontend_ip }}-cert.pem
+{%  else  %}
+x509_host_cert= {{ host_cert }}
+{% endif %}
+{% if not host_key %}
+x509_host_key= {{ grid_security_path }}/{{ frontend_ip }}-key.pem
+{%  else  %}
+x509_host_key = {{ host_key}}
+{% endif %}
+
+
+[mapping]
+unixmap={{ grid_user }}:{{ grid_group }} all
+
+[lrms]
+lrms={{ lrms_type }}
+{% if lrms_type == 'slurm' %}
+slurm_bin_path = lrms_bin_path
+{% elif lrms_type == 'condor' %}
+condor_bin_path = lrms_bin_path
+{% endif %}
+
+
+[arex]
+controldir={{ controldir }}
+sessiondir={{ sessiondir }}
+
+
+{% if enable_emies  %}
+[arex/ws]
+[arex/ws/emies]
+{% endif %}
+
+{% if enable_gridftpd  %}
+[gridftpd]
+globus_tcp_port_range={{ globus_tcp_port_range }}
+globus_udp_port_range={{ globus_udp_port_range }}
+
+[gridftpd/jobs]
+{% endif %}
+
+[infosys]
+loglevel=3
+
+[infosys/ldap]
+
+[infosys/cluster]
+
+
+[queue:{{ arc_frontend_grid_queue }}]
+
+

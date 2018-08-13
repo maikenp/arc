@@ -5,6 +5,7 @@ from Services import ServicesControl
 from Accounting import AccountingControl
 from Config import ConfigControl
 from TestCA import TestCAControl
+from InstallationWizard import InstallationWizardControl
 
 CTL_COMPONENTS = [
     RTEControl,
@@ -13,5 +14,6 @@ CTL_COMPONENTS = [
     ThirdPartyControl,
     AccountingControl,
     ConfigControl,
-    TestCAControl
+    TestCAControl,
+    InstallationWizardControl
 ]
