@@ -1,6 +1,7 @@
 #! /usr/bin/env python
 from ControlCommon import *
 from TestCA import TestCAControl
+from ThirdPartyDeployment import ThirdPartyControl
 
 import os, sys, re
 import subprocess
@@ -94,7 +95,6 @@ class InstallationWizardControl(ComponentControl):
         self.confdict['enable_emies'] = False
         self.confdict['enable_gridftpd'] = False
 
-        self.arcconfig = None
 
 
 
@@ -426,7 +426,7 @@ class InstallationWizardControl(ComponentControl):
                           '* Create a linux griduser and gridgroup if such does not exist\n' \
                           '* Create log folder if such does not exits\n' \
                           '* Create grid-security folder if such does not exits\n' \
-                          '* Create a test-host certificate if no real host certificate exist\n'
+                          '* Create a test-host certificate if no real host certificate exist\n'  \
                           '* Prepare ports according to arc.conf \n'
             self.print_summary(prepend_txt,append_txt)
 
@@ -463,6 +463,11 @@ class InstallationWizardControl(ComponentControl):
             self.create_testCA(cactrl,args)
             self.create_testHostCert(cactrl,args)
 
+        if args.action == 'iptables-config' or args.action == 'runall':
+            """ Configure iptables for running ARC services """
+            ipctrl = ThirdPartyControl(self.arcconfig)
+            ipctrl.iptables_config(args.multiport, args.any_state)
+            
 
     @staticmethod
     def register_parser(root_parser):
@@ -544,3 +549,18 @@ class InstallationWizardControl(ComponentControl):
         installwiz_runall.add_argument('--force', action='store_true',default=False,help='If the TestCA or host key and/or cert already exists, the generation of the CA and/or host certificate will fail. Select --force if you want to delete the old files and create new ones.')
         installwiz_runall.add_argument('--hostname', action='store',help='')
 
+        installwiz_runall.add_argument('--any-state', default=False,action='store_true',
+                                         help='Do not add \'--state NEW\' to filter configuration')
+        installwiz_runall.add_argument('--multiport', default=False,action='store_true',
+                                         help='Use one-line multiport filter instead of per-service entries')
+
+
+
+
+
+        installwiz_ipconfig = installwiz_actions.add_parser('iptables-config',
+                                                            help='Generate iptables config to allow ARC CE configured services')
+        installwiz_ipconfig.add_argument('--any-state', default=False,action='store_true',
+                                         help='Do not add \'--state NEW\' to filter configuration')
+        installwiz_ipconfig.add_argument('--multiport', default=False,action='store_true',
+                                         help='Use one-line multiport filter instead of per-service entries')
