@@ -66,6 +66,15 @@ class CertificateGenerator(object):
                         fpath = os.path.join(self.work_dir, fname)
                         if os.readlink(fpath) == name.replace(" ", "-") + ".pem":
                             os.unlink(fpath)
+                    if fname.endswith('.signing_policy'):
+                        fpath = os.path.join(self.work_dir, fname)
+                        try:
+                            if os.readlink(fpath) == name.replace(" ", "-") + ".signing_policy":
+				print('maiken debug in unlinking fpath %s',fpath)
+                                os.unlink(fpath)
+                        except OSError:
+                            """ Both links and files have signing_policy extenstion. If OSError, this was a file, and not a link """
+                            pass
                 # clean the cert itself
                 os.unlink(certLocation)
             else:
