@@ -50,6 +50,9 @@ class CertificateGenerator(object):
 
         keyLocation = os.path.join(self.work_dir, name.replace(" ", "-") + "-key.pem")
         certLocation = os.path.join(self.work_dir, name.replace(" ", "-") + ".pem")
+        signingPolicyLocation = os.path.join(self.work_dir, name.replace(" ", "-") + ".signing_policy")
+
+
         if os.path.isfile(keyLocation):
             if force:
                 logger.info("Key file '%s' already exist. Removing. ", keyLocation)
@@ -59,26 +62,28 @@ class CertificateGenerator(object):
                 sys.exit(1)
         if os.path.isfile(certLocation):
             if force:
-                logger.info("Certificate file '%s' already exist. Removing. ", certLocation)
-                # remove the links
-                for fname in os.listdir(self.work_dir):
-                    if fname.endswith('.0'):
-                        fpath = os.path.join(self.work_dir, fname)
-                        if os.readlink(fpath) == name.replace(" ", "-") + ".pem":
-                            os.unlink(fpath)
-                    if fname.endswith('.signing_policy'):
-                        fpath = os.path.join(self.work_dir, fname)
-                        try:
-                            if os.readlink(fpath) == name.replace(" ", "-") + ".signing_policy":
-				print('maiken debug in unlinking fpath %s',fpath)
-                                os.unlink(fpath)
-                        except OSError:
-                            """ Both links and files have signing_policy extenstion. If OSError, this was a file, and not a link """
-                            pass
-                # clean the cert itself
+                certFile = "*" + name.replace(" ","-")  + ".pem"   
+                symlinks = popen(["find", "/etc/grid-security/certificates/", "-lname", certFile])
+                fpaths = (symlinks["stdout"]).strip().split('\n')
+                for fpath in fpaths:
+                    if(os.path.islink(fpath)):
+                        os.unlink(fpath)
                 os.unlink(certLocation)
             else:
                 logger.error("Error generating CA certificate and key: file '%s' already exist", certLocation)
+                sys.exit(1)
+        if os.path.isfile(signingPolicyLocation):
+            if force:
+                signingPolicyFile = "*" + name.replace(" ","-")  + ".signing_policy"                
+                symlinks = popen(["find", "/etc/grid-security/certificates/", "-lname", signingPolicyFile])
+                fpaths = (symlinks["stdout"]).strip().split('\n')
+                for fpath in fpaths:
+                    if(os.path.islink(fpath)):
+                        os.unlink(fpath)
+                        
+                os.unlink(signingPolicyLocation)
+            else:
+                logger.error("Error generating signingpolicy file: file '%s' already exist", signingPolicyLocation)
                 sys.exit(1)
 
         subject = "/DC=org/DC=nordugrid/DC=ARC/O=TestCA/CN=" + name
