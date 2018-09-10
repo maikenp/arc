@@ -20,6 +20,15 @@ x509_host_key = {{ host_key}}
 {% endif %}
 
 
+
+{% for group in auth_groups %}
+[authgroup:{{group}}]
+{% for vo in auth_groups[group] %}
+vomses={{vo}}
+{% endfor %}
+{% endfor %}
+
+
 [mapping]
 unixmap={{ grid_user }}:{{ grid_group }} all
 
@@ -69,16 +78,16 @@ logfile={{ log_rootdir }}/ws-interface.log
 
 {% if enable_gridftpd  %}
 [gridftpd]
-globus_tcp_port_range={{ globus_tcp_port_range }}
-globus_udp_port_range={{ globus_udp_port_range }}
+globus_tcp_port_range=9000-10000
+globus_udp_port_range=9000-10000
 
 {% if log_rootdir != '/var/log/arc' %}
 logfile={{ log_rootdir }}/gridftpd.log
 {% endif %}
 
-
 [gridftpd/jobs]
 {% endif %}
+
 
 [infosys]
 loglevel=3
@@ -88,6 +97,6 @@ loglevel=3
 [infosys/cluster]
 
 
-[queue:{{ arc_frontend_grid_queue }}]
+[queue:{{ queue }}]
 
 
