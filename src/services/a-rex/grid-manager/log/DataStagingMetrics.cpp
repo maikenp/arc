@@ -23,6 +23,12 @@ static Arc::Logger& logger = Arc::Logger::getRootLogger();
 
 DataStagingMetrics::DataStagingMetrics():enabled(false),proc(NULL) {
 
+  pre_cleaned_update = false;
+  transfer_update = false;
+  cache_wait_update = false;
+  staging_preparing_wait_update = false;
+
+  status_counter.clear();
 }
 
 DataStagingMetrics::~DataStagingMetrics() {
@@ -41,26 +47,46 @@ void DataStagingMetrics::SetGmetricPath(const char* path) {
 }
 
 
-  void DataStagingMetrics::ReportDataStagingChange(const GMConfig& config) {
+  void DataStagingMetrics::ReportDataStagingChange(DataStaging::DTR_ptr dtr) {
     Glib::RecMutex::Lock lock_(lock);
-    
-
-    DataStaging::DTRList DtrList;
-    std::list<std::string> alljobs = DtrList.all_jobs();
-
-    // The DTRs ready to go into a processing state
-    std::map<DataStaging::DTRStatus::DTRStatusType, std::list<DataStaging::DTR_ptr> > DTRQueueStates;
-    DtrList.filter_dtrs_by_statuses(DataStaging::DTRStatus::ToProcessStates, DTRQueueStates);
-
-    // The active DTRs currently in processing states
-    std::map<DataStaging::DTRStatus::DTRStatusType, std::list<DataStaging::DTR_ptr> > DTRRunningStates;
-    DtrList.filter_dtrs_by_statuses(DataStaging::DTRStatus::ProcessingStates, DTRRunningStates);
 
 
-    for(std::map<DataStaging::DTRStatus::DTRStatusType,std::list<DataStaging::DTR_ptr> >::iterator dtr_states = DTRQueueStates.begin(); dtr_states != DTRQueueStates.end(); dtr_states ++){
+    //Insert the new DTR into the list if it does not exist, update status if it already exists    
+    std::pair<std::map<DataStaging::DTR_ptr,DataStaging::DTRStatus>::iterator,bool> ret;
+    ret = dtr_status_map.insert ( std::pair<DataStaging::DTR_ptr,DataStaging::DTRStatus>(dtr,dtr->get_status()) );
+    if (ret.second==false) {
+      dtr_status_map.find(dtr)->second = dtr->get_status();
+    }
 
-      logger.msg(Arc::DEBUG,"Maikenp map dtr states: %s",dtr_states->first);
 
+    //extract metrics of a selection of states
+    std::map<DataStaging::DTR_ptr,DataStaging::DTRStatus>::iterator dtr_it;
+    std::map<DataStaging::DTRStatus::DTRStatusType,int>::iterator counter_it;
+    for(dtr_it = dtr_status_map.begin(); dtr_it != dtr_status_map.end(); dtr_it ++){
+      if(dtr_it->second == DataStaging::DTRStatus::DTRStatusType::PRE_CLEANED){
+	if(status_counter.find(DataStaging::DTRStatus::DTRStatusType::PRE_CLEANED)!= status_counter.end()){
+	  status_counter[DataStaging::DTRStatus::DTRStatusType::PRE_CLEANED]++;
+	  pre_cleaned_update = true;
+	}
+      }
+      else if(dtr_it->second == DataStaging::DTRStatus::DTRStatusType::TRANSFER){
+	if(status_counter.find(DataStaging::DTRStatus::DTRStatusType::TRANSFER)!= status_counter.end()){
+	  status_counter[DataStaging::DTRStatus::DTRStatusType::TRANSFER]++;
+	  transfer_update = true;
+	}
+      }
+      else if(dtr_it->second == DataStaging::DTRStatus::DTRStatusType::CACHE_WAIT){
+	if(status_counter.find(DataStaging::DTRStatus::DTRStatusType::CACHE_WAIT)!= status_counter.end()){
+	  status_counter[DataStaging::DTRStatus::DTRStatusType::CACHE_WAIT]++;
+	  cache_wait_update = true;
+	}
+      }
+      else if(dtr_it->second == DataStaging::DTRStatus::DTRStatusType::STAGING_PREPARING_WAIT){
+	if(status_counter.find(DataStaging::DTRStatus::DTRStatusType::STAGING_PREPARING_WAIT)!= status_counter.end()){
+	  status_counter[DataStaging::DTRStatus::DTRStatusType::STAGING_PREPARING_WAIT]++;
+	  staging_preparing_wait_update = true;
+	}
+      }
     }
 
     Sync();
@@ -86,18 +112,48 @@ void DataStagingMetrics::Sync(void) {
   //since only one process can be started from Sync(), only 1 histogram can be sent at a time, therefore return for each call;
   //Sync is therefore called multiple times until there are not more histograms that have changed
 
-  /*
-  if(time_update){
-    if(RunMetrics(
-		  std::string("AREX-HEARTBEAT_LAST_SEEN"),
-		  Arc::tostring(time_delta), "int32", "sec"
-		  )) {
-      time_update = false;
-      return;
-    };
-  }
-  */
+  if(pre_cleaned_update){
 
+    if(RunMetrics(
+  		  std::string("AREX-ARC_STAGING_PRE_CLEANED"),
+  		  Arc::tostring(status_counter[DataStaging::DTRStatus::DTRStatusType::PRE_CLEANED]), "int32", "num"
+  		  )) {
+      
+      pre_cleaned_update = false;
+      return;
+    }
+  }
+  if(transfer_update){
+    if(RunMetrics(
+  		  std::string("AREX-ARC_STAGING_TRANSFER"),
+  		  Arc::tostring(status_counter[DataStaging::DTRStatus::DTRStatusType::TRANSFER]), "int32", "num"
+  		  )) {
+
+    transfer_update = false;
+    return;
+    }
+  }
+  if(cache_wait_update){
+    if(RunMetrics(
+  		  std::string("AREX-ARC_STAGING_CACHE_WAIT"),
+  		  Arc::tostring(status_counter[DataStaging::DTRStatus::DTRStatusType::CACHE_WAIT]), "int32", "num"
+  		  )) {
+      
+      cache_wait_update = false;
+      return;
+    }
+  }
+  if(staging_preparing_wait_update){
+    
+    if(RunMetrics(
+  		  std::string("AREX-ARC_STAGING_PREPARING_WAIT"),
+  		  Arc::tostring(status_counter[DataStaging::DTRStatus::DTRStatusType::STAGING_PREPARING_WAIT]), "int32", "num"
+  		  )) {
+
+    staging_preparing_wait_update = false;
+    return;
+    }
+  }
 
 }
 

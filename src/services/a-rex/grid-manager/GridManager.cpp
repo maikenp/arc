@@ -16,7 +16,6 @@
 #include "log/JobsMetrics.h"
 #include "log/HeartBeatMetrics.h"
 #include "log/SpaceMetrics.h"
-#include "log/DataStagingMetrics.h"
 #include "run/RunRedirected.h"
 #include "run/RunParallel.h"
 #include "files/ControlFileHandling.h"
@@ -358,10 +357,6 @@ bool GridManager::thread() {
 
     SpaceMetrics* space_metrics = config_.GetSpaceMetrics();
     if(space_metrics) space_metrics->ReportSpaceChange(config_);
-
-    DataStagingMetrics* datastaging_metrics = config_.GetDataStagingMetrics();
-    if(datastaging_metrics) datastaging_metrics->ReportDataStagingChange(config_);
-
 
 
     jobs.WaitAttention();
