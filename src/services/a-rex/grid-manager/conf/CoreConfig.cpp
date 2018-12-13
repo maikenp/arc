@@ -17,6 +17,7 @@
 #include "../log/JobsMetrics.h"
 #include "../log/HeartBeatMetrics.h"
 #include "../log/SpaceMetrics.h"
+#include "../log/DataStagingMetrics.h"
 #include "../jobs/JobsList.h"
 
 #include "CacheConfig.h"
@@ -383,6 +384,7 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
           config.jobs_metrics->SetGmetricPath(fname.c_str());
           config.heartbeat_metrics->SetGmetricPath(fname.c_str());
           config.space_metrics->SetGmetricPath(fname.c_str());
+          config.datastaging_metrics->SetGmetricPath(fname.c_str());
         }
         else if (command == "metrics") {
           std::list<std::string> metrics;
@@ -401,6 +403,11 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
 	       (metric == "all")){
 	      config.space_metrics->SetEnabled(true);
 	    };
+	    if((metric == "datastaging") || 
+	       (metric == "all")){
+	      config.datastaging_metrics->SetEnabled(true);
+	    };
+
           };
         };
       };

@@ -15,6 +15,7 @@
 #include "../conf/StagingConfig.h"
 #include "../../delegation/DelegationStore.h"
 #include "../../delegation/DelegationStores.h"
+#include "../log/DataStagingMetrics.h"
 
 #include "GMJob.h"
 #include "JobsList.h"
@@ -30,6 +31,11 @@ DTRInfo::DTRInfo(const GMConfig& config): config(config) {
 
 void DTRInfo::receiveDTR(DataStaging::DTR_ptr dtr) {
   // write state info to job.id.input for example
+
+
+  DataStagingMetrics* datastaging_metrics = config.GetDataStagingMetrics();
+  if(datastaging_metrics) datastaging_metrics->ReportDataStagingChange(dtr);
+
 }
 
 Arc::Logger DTRGenerator::logger(Arc::Logger::getRootLogger(), "Generator");
@@ -219,6 +225,7 @@ void DTRGenerator::receiveDTR(DataStaging::DTR_ptr dtr) {
   dtrs_received.push_back(dtr);
   event_lock.signal_nonblock();
   event_lock.unlock();
+
 }
 
 void DTRGenerator::receiveJob(GMJobRef& job) {
