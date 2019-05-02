@@ -115,7 +115,7 @@ bool HeartBeatMetrics::RunMetrics(const std::string name, const std::string& val
   cmd.push_back("-n");
   cmd.push_back(name);
   cmd.push_back("-g");
-  cmd.push_back("arc_jobs");
+  cmd.push_back("arc_system");
   cmd.push_back("-v");
   cmd.push_back(value);
   cmd.push_back("-t");//unit-type
