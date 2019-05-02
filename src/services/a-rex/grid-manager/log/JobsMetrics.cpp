@@ -56,15 +56,8 @@ void JobsMetrics::SetGmetricPath(const char* path) {
   std::string job_id = i->job_id;
 
   /*
-    ## - staging -- number of tasks in different data staging states
-    ## - cache -- free cache space
-    ## - session -- free session directory space
-    ## - heartbeat -- last modification time of A-REX heartbeat
-    ## - processingjobs -- the number of jobs currently being processed by ARC (jobs
-    ##                     between PREPARING and FINISHING states)
-    ## - failedjobs -- the ratio of failed jobs to all jobs
     ## - jobstates -- number of jobs in different A-REX internal stages
-    ## - all -- all of the above metrics
+    ## - failedjobs -- the ratio of failed jobs to all jobs
   */
   
 
@@ -75,7 +68,7 @@ void JobsMetrics::SetGmetricPath(const char* path) {
 
 
   //ratio of failed jobs to all jobs
-  fail_ratio = job_fail_counter/job_counter;
+  fail_ratio = (double)job_fail_counter/(double)job_counter;
   fail_ratio_changed = true;
 
   //actual states (jobstates)
