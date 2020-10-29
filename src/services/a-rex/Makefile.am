@@ -1,17 +1,11 @@
-if JURA_CLIENT_ENABLED
-JURA_CLIENT = jura
-else
-JURA_CLIENT =
-endif
-
 if INTERNAL_ENABLED
 INTERNAL = internaljobplugin
 else
 INTERNAL =
 endif
 
-SUBDIRS = delegation grid-manager infoproviders $(JURA_CLIENT) lrms schema $(INTERNAL) rte
-DIST_SUBDIRS = delegation grid-manager infoproviders jura lrms schema internaljobplugin rte
+SUBDIRS = delegation grid-manager infoproviders lrms schema $(INTERNAL) rte
+DIST_SUBDIRS = delegation grid-manager infoproviders lrms schema internaljobplugin rte
 
 pkglib_LTLIBRARIES = libarex.la
 noinst_PROGRAMS = test_cache_check
@@ -32,13 +26,12 @@ initd_SCRIPTS = $(AREX_SCRIPT)
 
 if SYSTEMD_UNITS_ENABLED
 AREX_UNIT = arc-arex.service
-AREX_UNIT_WRAPPER = arc-arex-start
 else
 AREX_UNIT =
-AREX_UNIT_WRAPPER =
 endif
 units_DATA = $(AREX_UNIT)
-pkgdata_SCRIPTS = $(AREX_UNIT_WRAPPER) perferator
+
+pkgdata_SCRIPTS = arc-arex-start perferator
 
 sbin_SCRIPTS = a-rex-backtrace-collect
 
@@ -69,6 +62,7 @@ libarex_la_LIBADD = \
 	$(top_builddir)/src/hed/libs/data/libarcdata.la \
 	$(top_builddir)/src/hed/libs/message/libarcmessage.la \
 	$(top_builddir)/src/hed/libs/loader/libarcloader.la \
+	$(top_builddir)/src/hed/libs/otokens/libarcotokens.la
 	$(top_builddir)/src/hed/libs/common/libarccommon.la
 libarex_la_LDFLAGS = -no-undefined -avoid-version -module $(DBCXX_LIBS)
 

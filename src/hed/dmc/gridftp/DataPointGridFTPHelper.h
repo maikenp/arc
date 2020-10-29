@@ -65,7 +65,10 @@ namespace ArcDMCGridFTP {
     unsigned long long int range_start;
     unsigned long long int range_end;
     bool allow_out_of_order;
+    bool stream_mode;
     bool autodir;
+    DataExternalComm::DataChunkClientList delayed_chunks;
+    unsigned long long int max_offset;
 
     // Current state representation
     SimpleCondition cond;
@@ -110,6 +113,8 @@ namespace ArcDMCGridFTP {
     DataStatus RemoveFile();
     DataStatus RemoveDir();
     DataStatus do_more_stat(FileInfo& f, DataPoint::DataPointInfoType verb);
+    DataPointGridFTPHelper(DataPointGridFTPHelper const&);
+    DataPointGridFTPHelper& operator=(DataPointGridFTPHelper const&);
   public:
     DataPointGridFTPHelper(const URL& url, const UserConfig& usercfg, std::istream& instream, std::ostream& outstream);
     virtual ~DataPointGridFTPHelper();
@@ -118,9 +123,9 @@ namespace ArcDMCGridFTP {
     void SetBufferSize(unsigned long long int size) { ftp_bufsize = size; };
     void SetStreams(int streams) { ftp_threads = streams; };
     void SetRange(unsigned long long int start, unsigned long long int end) { range_start = start; range_end = end; };
-    void SetAllowOutOfOrder(bool out_of_order) { allow_out_of_order = out_of_order; };
     void SetSecure(bool secure) { force_secure = secure; };
     void SetPassive(bool passive) { force_passive = passive; };
+    void ReadOutOfOrder(bool out_of_order) { allow_out_of_order = out_of_order; }
     DataStatus Read();
     DataStatus Write();
     DataStatus Check();

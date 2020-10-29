@@ -560,14 +560,15 @@ sub xestats {
 
 # Combine info about ExecutionEnvironments from config options and the LRMS plugin
 sub xeinfos {
-    my ($config, $nodes) = @_;
+    my ($config, $nodes, $queues) = @_;
     my $infos = {};
     my %nodemap = ();
     my @xenvs = keys %{$config->{xenvs}};
     for my $xenv (@xenvs) {
         my $xecfg = $config->{xenvs}{$xenv};
         my $info = $infos->{$xenv} = {};
-        my $nscfg = $xecfg->{NodeSelection};
+        my $nodelist = \@{$queues->{$xenv}{nodes}};
+        my $nscfg = $xecfg->{NodeSelection} || { 'Regex' => $nodelist };
         if (ref $nodes eq 'HASH') {
             my $selected;
             if (not $nscfg) {
@@ -658,15 +659,16 @@ sub addprefix {
 # can have as many parameters as one wants.
 sub prioritizedvalues {
    my @values = @_;
-
+   my $numelements = scalar @values;
+   
    while (@values) {
       my $current = shift @values;
-      return $current if (((defined $current) and ($current ne '')) or ((scalar @values) == 1));
+      return $current if (((defined $current) and ($current ne '')) or ( $numelements == 1));
   }
 
    # just in case all the above fails, log and return empty string
-   $log->debug("No suitable value found in call to prioritizedvalues. Returning empty string");
-   return '';
+   $log->debug("No suitable value found in call to prioritizedvalues. Returning undefined");
+   return undef;
 }
 
 # TODO: add VOs information
@@ -771,7 +773,7 @@ sub collect($) {
                             and not $xeconfig->{Homogeneous};
     }
 
-    my $xeinfos = xeinfos($config, $lrms_info->{nodes});
+    my $xeinfos = xeinfos($config, $lrms_info->{nodes}, $lrms_info->{queues});
 
     # Figure out total number of CPUs
     my ($totalpcpus, $totallcpus) = (0,0);
@@ -1408,16 +1410,11 @@ sub collect($) {
           # TODO: check where is this taken
           $cact->{IDFromEndpoint} = "urn:idfe:$jobid" if $jobid;
           $cact->{Name} = $gmjob->{jobname} if $gmjob->{jobname};
-          # TODO: properly set either ogf:jsdl:1.0 or nordugrid:xrsl
           # Set job specification language based on description
           if ($gmjob->{description}) {
                 if ($gmjob->{description} eq 'adl') { 
                     $cact->{JobDescription} = 'emies:adl';
-                } elsif ($gmjob->{description} eq 'jsdl') {
-                    # TODO: Supported version might be more accurate if needed.
-                    $cact->{JobDescription} = 'ogf:jsdl:1.0'; 
-                }
-                else {
+                } else {
                     $cact->{JobDescription} = 'nordugrid:xrsl';
                 }
           } else {
@@ -1433,7 +1430,7 @@ sub collect($) {
           $cact->{Owner} = $gmjob->{subject} if $gmjob->{subject};
           $cact->{LocalOwner} = $gmjob->{localowner} if $gmjob->{localowner};
           # OBS: Times are in seconds.
-          $cact->{RequestedTotalWallTime} = $gmjob->{reqwalltime} if defined $gmjob->{reqwalltime};
+	  $cact->{RequestedTotalWallTime} = $gmjob->{reqwalltime} * ($gmjob->{count} || 1) if defined $gmjob->{reqwalltime};
           $cact->{RequestedTotalCPUTime} = $gmjob->{reqcputime} if defined $gmjob->{reqcputime};
           # OBS: Should include name and version. Exact format not specified
           $cact->{RequestedApplicationEnvironment} = $gmjob->{runtimeenvironments} if $gmjob->{runtimeenvironments};
@@ -1617,7 +1614,8 @@ sub collect($) {
             # TODO: Downtime, is this necessary, and how should it work?
 
             $cep->{Staging} =  'staginginout';
-            $cep->{JobDescription} = [ 'ogf:jsdl:1.0', "nordugrid:xrsl" ];
+
+            $cep->{JobDescription} = [ 'nordugrid:xrsl' ];
 
             $cep->{TotalJobs} = $gmtotalcount{notfinished} || 0;
 
@@ -1751,7 +1749,7 @@ sub collect($) {
             # TODO: Downtime, is this necessary, and how should it work?
 
             $cep->{Staging} =  'staginginout';
-            $cep->{JobDescription} = [ 'ogf:jsdl:1.0', 'nordugrid:xrsl', 'emies:adl' ];
+            $cep->{JobDescription} = [ 'nordugrid:xrsl', 'emies:adl' ];
 
             $cep->{TotalJobs} = $gmtotalcount{notfinished} || 0;
 
@@ -1879,7 +1877,7 @@ sub collect($) {
             # TODO: Downtime, is this necessary, and how should it work?
 
             $cep->{Staging} =  'staginginout';
-            $cep->{JobDescription} = [ 'ogf:jsdl:1.0', 'nordugrid:xrsl', 'emies:adl' ];
+            $cep->{JobDescription} = [ 'nordugrid:xrsl', 'emies:adl' ];
 
             $cep->{TotalJobs} = $gmtotalcount{notfinished} || 0;
 
@@ -2101,7 +2099,7 @@ sub collect($) {
             # TODO: Downtime, is this necessary, and how should it work?
 
             $cep->{Staging} =  'staginginout';
-            $cep->{JobDescription} = [ 'ogf:jsdl:1.0', 'nordugrid:xrsl', 'emies:adl' ];
+            $cep->{JobDescription} = [ 'nordugrid:xrsl', 'emies:adl' ];
 
             $cep->{TotalJobs} = $gmtotalcount{notfinished} || 0;
 
@@ -2305,7 +2303,7 @@ sub collect($) {
             # TODO: Downtime, is this necessary, and how should it work?
 
             $cep->{Staging} =  'staginginout';
-            $cep->{JobDescription} = [ 'ogf:jsdl:1.0', 'nordugrid:xrsl', 'emies:adl' ];
+            $cep->{JobDescription} = [ 'nordugrid:xrsl', 'emies:adl' ];
 
             $cep->{TotalJobs} = $gmtotalcount{notfinished} || 0;
 
@@ -2411,7 +2409,7 @@ sub collect($) {
             # TODO: Downtime, is this necessary, and how should it work?
 
             $cep->{Staging} =  'staginginout';
-            $cep->{JobDescription} = [ 'ogf:jsdl:1.0', 'nordugrid:xrsl', 'emies:adl' ];
+            $cep->{JobDescription} = [ 'nordugrid:xrsl', 'emies:adl' ];
 
             $cep->{TotalJobs} = $gmtotalcount{notfinished} || 0;
 
@@ -2721,12 +2719,12 @@ sub collect($) {
         $csha->{MaxCPUTime} = prioritizedvalues($sconfig->{maxcputime},$qinfo->{maxcputime});
         # TODO: implement in backends
         $csha->{MaxTotalCPUTime} = $qinfo->{maxtotalcputime} if defined $qinfo->{maxtotalcputime};
-        $csha->{MinCPUTime} = $qinfo->{mincputime} if defined $qinfo->{mincputime};
+        $csha->{MinCPUTime} = prioritizedvalues($sconfig->{mincputime},$qinfo->{mincputime});
         $csha->{DefaultCPUTime} = $qinfo->{defaultcput} if defined $qinfo->{defaultcput};
         $csha->{MaxWallTime} =  prioritizedvalues($sconfig->{maxwalltime},$qinfo->{maxwalltime});
         # TODO: MaxMultiSlotWallTime replaces MaxTotalWallTime, but has different meaning. Check that it's used correctly
         #$csha->{MaxMultiSlotWallTime} = $qinfo->{maxwalltime} if defined $qinfo->{maxwalltime};
-        $csha->{MinWallTime} =  $qinfo->{minwalltime} if defined $qinfo->{minwalltime};
+        $csha->{MinWallTime} =  prioritizedvalues($sconfig->{minwalltime},$qinfo->{minwalltime});
         $csha->{DefaultWallTime} = $qinfo->{defaultwallt} if defined $qinfo->{defaultwallt};
 
         my ($maxtotal, $maxlrms) = split ' ', ($config->{maxjobs} || '');
@@ -2822,10 +2820,14 @@ sub collect($) {
         # OBS: this serving state should come from LRMS.
         $csha->{ServingState} = 'production';
 
-        # Count local jobs
-        my $localrunning = $qinfo->{running};
-        my $localqueued = $qinfo->{queued};
-        my $localsuspended = $qinfo->{suspended} || 0;
+        # We can't guess which local job belongs to a certain VO, hence
+        # we set LocalRunning/Waiting/Suspended to zero for shares related to
+        # a VO. 
+        # The global share that represents the queue has also jobs not
+        # managed by the ARC CE as it was in previous versions of ARC
+        my $localrunning = ($qname eq $share) ? $qinfo->{running} : 0;
+        my $localqueued = ($qname eq $share) ? $qinfo->{queued} : 0;
+        my $localsuspended = ($qname eq $share) ? $qinfo->{suspended}||0 : 0;
 
         # TODO: [negative] This should avoid taking as local jobs
         # also those submitted without any VO

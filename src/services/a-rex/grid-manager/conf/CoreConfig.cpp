@@ -87,39 +87,37 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
   // List of helper commands that will be substituted after all configuration is read
   std::list<std::string> helpers;
   std::string jobreport_publisher;
-  std::string accounting_archive_manager;
   bool helper_log_is_set = false;
   bool job_log_log_is_set = false;
-  bool archive_manage_log_is_set = false;
-  bool ws_enabled = false;
   Arc::ConfigIni cf(cfile);
   cf.SetSectionIndicator(".");
-  static const int common_secnum = 0;
-  cf.AddSection("common");
-  static const int ganglia_secnum = 1;
-  cf.AddSection("arex/ganglia");
-  static const int emies_secnum = 2;
-  cf.AddSection("arex/ws/jobs");
-  static const int ws_secnum = 3;
-  cf.AddSection("arex/ws");
-  static const int jura_archiving_secnum = 4;
-  cf.AddSection("arex/jura/archiving");
-  static const int jura_secnum = 5;
-  cf.AddSection("arex/jura");
-  static const int gm_secnum = 6;
-  cf.AddSection("arex");
-  static const int infosys_secnum = 7;
-  cf.AddSection("infosys"); 
-  static const int queue_secnum = 8;
-  cf.AddSection("queue");
-  static const int ssh_secnum = 9;
-  cf.AddSection("lrms/ssh");
-  static const int lrms_secnum = 10;
-  cf.AddSection("lrms");
-  static const int cluster_secnum = 11;
-  cf.AddSection("infosys/cluster");
-  static const int perflog_secnum = 12;
+  static const int perflog_secnum     = 0;
   cf.AddSection("common/perflog");
+  static const int common_secnum      = 1;
+  cf.AddSection("common");
+  static const int ganglia_secnum     = 2;
+  cf.AddSection("arex/ganglia");
+  static const int emies_secnum       = 3;
+  cf.AddSection("arex/ws/jobs");
+  static const int publicinfo_secnum  = 4;
+  cf.AddSection("arex/ws/publicinfo");
+  static const int ws_secnum          = 5;
+  cf.AddSection("arex/ws");
+  static const int jura_secnum        = 6;
+  cf.AddSection("arex/jura");
+  static const int gm_secnum          = 7;
+  cf.AddSection("arex");
+  static const int cluster_secnum     = 8;
+  cf.AddSection("infosys/cluster");
+  static const int infosys_secnum     = 9;
+  cf.AddSection("infosys"); 
+  static const int queue_secnum       = 10;
+  cf.AddSection("queue");
+  static const int ssh_secnum         = 11;
+  cf.AddSection("lrms/ssh");
+  static const int lrms_secnum        = 12;
+  cf.AddSection("lrms");
+
   if (config.job_perf_log) {
     config.job_perf_log->SetEnabled(false);
     config.job_perf_log->SetOutput("/var/log/arc/perfdata/arex.perflog");
@@ -172,6 +170,12 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
             config.default_queue = default_queue;
           }
           CheckLRMSBackends(default_lrms);
+        }
+        else if (command == "benchmark") {
+          std::string default_benchmark = rest;
+          if (!default_benchmark.empty()) {
+            config.default_benchmark = default_benchmark;
+          }
         };
       };
       continue;
@@ -294,7 +298,7 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
         else if (command == "controldir") {
           std::string control_dir = rest;
           if (control_dir.empty()) {
-            logger.msg(Arc::ERROR, "Missing directory in control command"); return false;
+            logger.msg(Arc::ERROR, "Missing directory in controldir command"); return false;
           }
           config.control_dir = control_dir;
         }
@@ -411,9 +415,7 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
     };
     
     if (cf.SectionNum() == ws_secnum) { // arex/ws
-     
       if (cf.SubSection()[0] == '\0') {
-        ws_enabled = true;
         if(command == "wsurl") {
            config.arex_endpoint = rest;
         };
@@ -423,7 +425,6 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
 
     if (cf.SectionNum() == emies_secnum) { // arex/ws/jobs
       if (cf.SubSection()[0] == '\0') {
-        ws_enabled = true;
         config.enable_emies_interface = true;
         config.enable_arc_interface =  true; // so far
         if (command == "allownew") {
@@ -463,9 +464,31 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
       continue;
     };
 
+    if (cf.SectionNum() == publicinfo_secnum) { // arex/ws/publicinfo
+      if (cf.SubSection()[0] == '\0') {
+        config.enable_publicinfo = true;
+        if (command == "allowaccess") {
+          while(!rest.empty()) {
+            std::string str = Arc::ConfigIni::NextArg(rest);
+            if(!str.empty()) {
+              config.matching_groups_publicinfo.push_back(std::pair<bool,std::string>(true,str));
+            };
+          };
+        } else if (command == "denyaccess") {
+          while(!rest.empty()) {
+            std::string str = Arc::ConfigIni::NextArg(rest);
+            if(!str.empty()) {
+              config.matching_groups_publicinfo.push_back(std::pair<bool,std::string>(false,str));
+            };
+          };
+        };
+      };
+      continue;
+    };
+
     if (cf.SectionNum() == jura_secnum) { // arex/jura
       if (cf.SubSection()[0] == '\0') {
-        jobreport_publisher = "jura";
+        jobreport_publisher = "jura-ng";
         if (command == "logfile") {
           if (config.job_log) {
             std::string logfile = rest;
@@ -473,11 +496,7 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
               logger.msg(Arc::ERROR, "Missing file name in [arex/jura] logfile"); return false;
             };
             config.job_log->SetReporterLogFile(logfile.c_str());
-            // default for archive management is to use the same logpath as jura
-            std::string archive_manager_logfile = logfile.substr(0, logfile.size() - 4) + "-archive-manager.log";
-            config.job_log->SetArchiveManagerLogFile(archive_manager_logfile.c_str());
             job_log_log_is_set = true;
-            archive_manage_log_is_set = true;
           };
         }
         else if (command == "urdelivery_frequency") {
@@ -511,33 +530,6 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
       };
       continue;
     };
-
-    if (cf.SectionNum() == jura_archiving_secnum) { // arex/jura/archiving
-      if (cf.SubSection()[0] == '\0') {
-        accounting_archive_manager = "jura-archive-manager";
-        if (command == "logfile") {
-          if (config.job_log) {
-            std::string logfile = rest;
-            if (logfile.empty()) {
-              logger.msg(Arc::ERROR, "Missing file name in [arex/jura/archiving] logfile"); return false;
-            }
-            config.job_log->SetArchiveManagerLogFile(logfile.c_str());
-            archive_manage_log_is_set = true;
-          }
-        }
-        else if (command == "manage_frequency") {
-          if (config.job_log) {
-            std::string period_s = Arc::ConfigIni::NextArg(rest);
-            unsigned int period = 0;
-            if (!Arc::stringto(period_s, period)) {
-              logger.msg(Arc::ERROR, "Wrong number in manage_frequency: %s", period_s); return false;
-            }
-            config.job_log->SetArchiveManagerPeriod(period);
-          }
-        }
-      };
-      continue;
-    }
 
     if (cf.SectionNum() == infosys_secnum) { // infosys - looking for user name to get share uid
       /*
@@ -628,10 +620,6 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
     if(!jobreport_publisher.empty()) {
       config.job_log->SetReporter(jobreport_publisher.c_str());
       if(!job_log_log_is_set) config.job_log->SetReporterLogFile("/var/log/arc/jura.log");
-      if(!accounting_archive_manager.empty()) {
-        config.job_log->SetArchiveManager(accounting_archive_manager.c_str());
-        if(!archive_manage_log_is_set) config.job_log->SetArchiveManagerLogFile("/var/log/arc/jura-archive-manager.log");
-      }
     }
   }
 
@@ -640,6 +628,11 @@ bool CoreConfig::ParseConfINI(GMConfig& config, Arc::ConfigFile& cfile) {
     config.helper_log = "/var/log/arc/job.helper.errors";
   }
  
+  if (config.default_benchmark.empty()){
+    // Assign default benchmark value with no CPUTime normalization
+    config.default_benchmark = "HEPSPEC:1.0";
+  }
+
   // Do substitution of control dir and helpers here now we have all the
   // configuration. These are special because they do not change per-user
   config.Substitute(config.control_dir);

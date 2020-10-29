@@ -108,7 +108,7 @@ static void cache_func(void* arg) {
       }
     }
 
-    logger.msg(Arc::DEBUG, "Running command %s", cmd);
+    logger.msg(Arc::DEBUG, "Running command: %s", cmd);
     int result = RunRedirected::run(Arc::User(), "cache-clean", -1, h, h, cmd.c_str(), clean_timeout);
     if(h != -1) close(h);
     if (result != 0) {
@@ -309,10 +309,6 @@ bool GridManager::thread() {
       if (joblog->ReporterEnabled()){
         joblog->RunReporter(config_);
       }
-      // run acconting archive manager if enabled
-      if (joblog->ArchiveManagerEnabled()){
-        joblog->RunArchiveManager(config_);
-      }
     }
     JobsMetrics* metrics = config_.GetJobsMetrics();
     if(metrics) metrics->Sync();
@@ -366,8 +362,6 @@ bool GridManager::thread() {
 
     SpaceMetrics* space_metrics = config_.GetSpaceMetrics();
     if(space_metrics) space_metrics->ReportSpaceChange(config_);
-
-
 
     jobs.WaitAttention();
     logger.msg(Arc::DEBUG,"Waking up");

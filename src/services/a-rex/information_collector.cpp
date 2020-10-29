@@ -42,17 +42,19 @@ void ARexService::InformationCollector(void) {
       run.AssignStderr(stderr_str);
       logger_.msg(Arc::DEBUG,"Resource information provider: %s",cmd);
       if(!run.Start()) {
-        if(thread_count_.WaitForExit()) break;
-        continue; // try again
-      };
-      while(!run.Wait()) {
-        logger_.msg(Arc::DEBUG,"Resource information provider failed");
-      }
-      r = run.Result();
-      if (r!=0) {
-        logger_.msg(Arc::WARNING,"Resource information provider failed with exit status: %i\n%s",r,stderr_str);
+        // Failed to fork proces
+        logger_.msg(Arc::DEBUG,"Resource information provider failed to start");
       } else {
-        logger_.msg(Arc::DEBUG,"Resource information provider log:\n%s",stderr_str);
+        if(!run.Wait()) {
+          logger_.msg(Arc::DEBUG,"Resource information provider failed to run");
+        } else {
+          r = run.Result();
+          if (r!=0) {
+            logger_.msg(Arc::WARNING,"Resource information provider failed with exit status: %i\n%s",r,stderr_str);
+          } else {
+            logger_.msg(Arc::DEBUG,"Resource information provider log:\n%s",stderr_str);
+          };
+        };
       };
     };
     if (r!=0) {
@@ -142,7 +144,7 @@ bool ARexService::RegistrationCollector(Arc::XMLNode &doc) {
     logger.msg(Arc::VERBOSE, "Registered static information: \n doc: %s",(std::string)doc);
     infodoc_.Release();
   } else
-    logger.msg(Arc::VERBOSE, "Information Registered without static attributes: \n doc: %s",(std::string)doc);
+    logger.msg(Arc::VERBOSE, "Information registered without static attributes: \n doc: %s",(std::string)doc);
 return true;
   //
   // TODO: filter information here.

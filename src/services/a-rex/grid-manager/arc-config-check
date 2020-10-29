@@ -419,7 +419,7 @@ sub check_logrotate($$$$) {
     my $defaultpidpath = '/var/run/';
     my $defaultlocations = {
                             'arexlogfile' => $defaultlogpath.'arex.log',
-                            'arexpidfile' => $defaultpidpath.'arc/arex.pid',
+                            'arexpidfile' => $defaultpidpath.'arched-arex.pid',
                             'gridftpdlogfile' => $defaultlogpath.'gridftpd.log',
                             'gridftpdpidfile' => $defaultpidpath.'gridftpd.pid',
                             'infosyslogfile' => $defaultlogpath.'infoprovider.log',
@@ -460,7 +460,17 @@ sub validconfparams() {
 			push(@validblocks, $blockname) if !$dynamic;
 		}
 	}
-	return ( \@validparams, \@validblocks, \@novalueparams );
+    # allow removed in 6.8.0 (hardcode)
+    push(@validparams, "urdelivery_keepfailed");
+    push(@validparams, "legacy_fallback");
+    push(@validparams, "use_ssl");
+    push(@validparams, "benchmark_type");
+    push(@validparams, "benchmark_value");
+    push(@validparams, "benchmark_description");
+    push(@validparams, "archivedir");
+    push(@validparams, "archivettl");
+    push(@validblocks, "arex/jura/archiving");
+    return ( \@validparams, \@validblocks, \@novalueparams );
 }
 	
 =item configuration check
@@ -536,6 +546,7 @@ sub confcheck($) {
 
 		$name =~ s/^\s*//;
 		$name =~ s/\s*$//;
+		$name =~ s/^[-+!]//;
 		
 		if (!defined $value and !grep(/^$name$/, @$novalueparams)) {
 		    e("$arcconf: $c: No value specified for $name\n");
@@ -681,7 +692,6 @@ sub check_completeness() {
     if (exists($config->{"gridftpd/jobs"}) && !(exists($config->{"gridftpd/jobs"}{"allowaccess"}) || exists($config->{"gridftpd/jobs"}{"denyaccess"}))) {
         w("No allowaccess or denyaccess defined in [gridftpd/jobs]. Interface will be open for all mapped users\n");
     }
-
 }
 
 =item check of applications

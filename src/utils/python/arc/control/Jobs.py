@@ -2,6 +2,16 @@ from __future__ import print_function
 from __future__ import absolute_import
 
 from .ControlCommon import *
+try:
+    from .Accounting import AccountingControl
+except ImportError:
+    AccountingControl = None
+try:
+    from .DataStaging import DataStagingControl
+except ImportError:
+    DataStagingControl = None
+
+
 import subprocess
 import sys
 import re
@@ -107,21 +117,22 @@ class JobsControl(ComponentControl):
             self.logger.error('There is no such job %s', jobid)
             sys.exit(1)
 
-    def __parse_job_attrs(self, jobid):
+    def __parse_job_attrs(self, jobid, attrtype='local'):
         _KEYVALUE_RE = re.compile(r'^([^=]+)=(.*)$')
-        local_file = '{0}/job.{1}.local'.format(self.control_dir, jobid)
+        attr_file = '{0}/job.{1}.{2}'.format(self.control_dir, jobid, attrtype)
         job_attrs = {}
-        if os.path.exists(local_file):
-            with open(local_file, 'r') as local_f:
-                for line in local_f:
+        if os.path.exists(attr_file):
+            with open(attr_file, 'r') as attr_f:
+                for line in attr_f:
                     kv = _KEYVALUE_RE.match(line)
                     if kv:
-                        job_attrs[kv.group(1)] = kv.group(2)
-            job_attrs['mapped_account'] = pwd.getpwuid(os.stat(local_file).st_uid).pw_name
+                        job_attrs[kv.group(1)] = kv.group(2).strip("'\"")
+            if attrtype == 'local':
+                job_attrs['mapped_account'] = pwd.getpwuid(os.stat(attr_file).st_uid).pw_name
         else:
             self.__get_jobs()
             self.__job_exists(jobid)
-            self.logger.error('Failed to open job attributes file: %s', local_file)
+            self.logger.error('Failed to open job attributes file: %s', attr_file)
         return job_attrs
 
     def _service_log_print(self, log_path, jobid):
@@ -228,36 +239,73 @@ class JobsControl(ComponentControl):
                     sys.stdout.write(line)
             sys.stdout.flush()
 
-    def job_log_signal_handler(self, signum, frame):
-        self.process_job_log_file = False
-
-    def job_log(self, args):
+    def job_script(self, args):
         error_log = '{0}/job.{1}.errors'.format(self.control_dir, args.jobid)
-        self.process_job_log_file = True
         if os.path.exists(error_log):
             el_f = open(error_log, 'r')
-            print_line = True
+            print_line = False
+            for line in el_f:
+                if line.startswith('----- starting submit'):
+                    print_line = True
+                    continue
+                if line.startswith('----- exiting submit'):
+                    break
+                if print_line:
+                    sys.stdout.write(line)
+            sys.stdout.flush()
+            if not print_line:
+                self.logger.error('There is no job script found in log file. Is the job reached LRMS?')
+        else:
+            self.__get_jobs()
+            self.__job_exists(args.jobid)
+            self.logger.error('Failed to find job log file containing generated job script: %s', error_log)
+
+    @staticmethod
+    def __cut_jobscript(line, print_line):
+        # modifies [print flag, continue flag] list (passed by reference)
+        if line.startswith('----- starting submit'):
+            print_line[0] = False
+            print_line[1] = True
+        if line.startswith('----- exiting submit'):
+            print_line[0] = True
+            print_line[1] = True
+        # keep print flag but remove continue
+        print_line[1] = False
+
+    def __job_log_signal_handler(self, signum, frame):
+        self.process_job_log_file = False
+
+    def __follow_log(self, log, follow=False, process_function=None):
+        self.process_job_log_file = True
+        if os.path.exists(log):
+            el_f = open(log, 'r')
+            print_line = [True, False]  # [print flag, continue flag]
             pos = 0
-            if args.follow:
-                signal.signal(signal.SIGINT, self.job_log_signal_handler)
+            if follow:
+                signal.signal(signal.SIGINT, self.__job_log_signal_handler)
             while self.process_job_log_file:
                 el_f.seek(pos)
                 for line in el_f:
-                    if line.startswith('----- starting submit'):
-                        print_line = args.lrms
-                    if line.startswith('----- exiting submit'):
-                        print_line = True
-                        if not args.lrms:
-                            continue
-                    if print_line:
+                    if process_function is not None:
+                        process_function(line, print_line)
+                    if print_line[1]:
+                        continue
+                    if print_line[0]:
                         sys.stdout.write(line)
                 sys.stdout.flush()
                 pos = el_f.tell()
-                if not args.follow:
+                if not follow:
                     self.process_job_log_file = False
                 else:
                     time.sleep(0.1)
             el_f.close()
+        else:
+            self.logger.error('Failed to find log file: %s', log)
+
+    def job_log(self, args):
+        error_log = '{0}/job.{1}.errors'.format(self.control_dir, args.jobid)
+        if os.path.exists(error_log):
+            self.__follow_log(error_log, args.follow, process_function=self.__cut_jobscript)
         else:
             self.__get_jobs()
             self.__job_exists(args.jobid)
@@ -288,6 +336,20 @@ class JobsControl(ComponentControl):
               'State\t\t: {state}\n' \
               'LRMS ID\t\t: {lrmsid}\n' \
               'Modified\t: {modified}'.format(**self.jobs[args.jobid]))
+
+    def job_stdout(self, args):
+        job_grami = self.__parse_job_attrs(args.jobid, 'grami')
+        if not 'joboption_stdout' in job_grami:
+            self.logger.error('Cannot find executable stdout location for job %s', args.jobid)
+            sys.exit(1)
+        self.__follow_log(job_grami['joboption_stdout'], args.follow)
+
+    def job_stderr(self, args):
+        job_grami = self.__parse_job_attrs(args.jobid, 'grami')
+        if not 'joboption_stderr' in job_grami:
+            self.logger.error('Cannot find executable stderr location for job %s', args.jobid)
+            sys.exit(1)
+        self.__follow_log(job_grami['joboption_stderr'], args.follow)
 
     def job_getattr(self, args):
         job_attrs = self.__parse_job_attrs(args.jobid)
@@ -376,15 +438,25 @@ class JobsControl(ComponentControl):
             self.kill_or_clean(args, '-r')
         elif args.action == 'info':
             self.jobinfo(args)
+        elif args.action == 'script':
+            self.job_script(args)
         elif args.action == 'log':
             if args.service:
                 self.job_service_logs(args)
             else:
                 self.job_log(args)
+        elif args.action == 'stdout':
+            self.job_stdout(args)
+        elif args.action == 'stderr':
+            self.job_stderr(args)
         elif args.action == 'attr':
             self.job_getattr(args)
         elif args.action == 'stats':
             self.job_stats(args)
+        elif args.action == 'accounting' and AccountingControl is not None:
+            AccountingControl(self.arcconfig).jobcontrol(args)
+        elif args.action == 'datastaging' and DataStagingControl is not None:
+            DataStagingControl(self.arcconfig).jobcontrol(args)
 
     def complete_owner(self, args):
         owners = []
@@ -412,21 +484,32 @@ class JobsControl(ComponentControl):
 
         jobs_actions = jobs_ctl.add_subparsers(title='Jobs Control Actions', dest='action',
                                                metavar='ACTION', help='DESCRIPTION')
+        jobs_actions.required = True
+
         jobs_list = jobs_actions.add_parser('list', help='List available A-REX jobs')
         jobs_list.add_argument('-l', '--long', help='Detailed listing of jobs', action='store_true')
         jobs_list.add_argument('-s', '--state', help='Filter jobs by state', action='append', choices=__JOB_STATES)
         jobs_list.add_argument('-o', '--owner', help='Filter jobs by owner').completer = complete_job_owner
 
+        jobs_script = jobs_actions.add_parser('script', help='Display job script submitted to LRMS')
+        jobs_script.add_argument('jobid', help='Job ID').completer = complete_job_id
+
         jobs_log = jobs_actions.add_parser('log', help='Display job log')
         jobs_log.add_argument('jobid', help='Job ID').completer = complete_job_id
-        jobs_log.add_argument('-l', '--lrms', help='Include LRMS job submission script into the output',
-                              action='store_true')
         jobs_log.add_argument('-f', '--follow', help='Follow the job log output', action='store_true')
         jobs_log.add_argument('-s', '--service', help='Show ARC CE logs containing the jobID instead of job log',
                               action='store_true')
 
         jobs_info = jobs_actions.add_parser('info', help='Show job main info')
         jobs_info.add_argument('jobid', help='Job ID').completer = complete_job_id
+
+        jobs_stdout = jobs_actions.add_parser('stdout', help='Show job executable stdout')
+        jobs_stdout.add_argument('jobid', help='Job ID').completer = complete_job_id
+        jobs_stdout.add_argument('-f', '--follow', help='Follow the job log output', action='store_true')
+
+        jobs_stderr = jobs_actions.add_parser('stderr', help='Show job executable stderr')
+        jobs_stderr.add_argument('jobid', help='Job ID').completer = complete_job_id
+        jobs_stderr.add_argument('-f', '--follow', help='Follow the job log output', action='store_true')
 
         jobs_attr = jobs_actions.add_parser('attr', help='Get ')
         jobs_attr.add_argument('jobid', help='Job ID').completer = complete_job_id
@@ -451,3 +534,16 @@ class JobsControl(ComponentControl):
         jobs_stats_type = jobs_stats.add_mutually_exclusive_group()
         jobs_stats_type.add_argument('-t', '--total', help='Show server total stats', action='store_true')
         jobs_stats_type.add_argument('-d', '--data-staging', help='Show server datastaging stats', action='store_true')
+
+        if AccountingControl is not None:
+            # add 'job accounting xxx' functionality as well as 'accounting job xxx'
+            jobs_accounting = jobs_actions.add_parser('accounting', help='Show job accounting data')
+            AccountingControl.register_job_parser(jobs_accounting)
+
+
+        if DataStagingControl is not None:
+        # add 'job datastaging xxx' functionality as well ass 'datastaging job xxx' 
+            dds_job_ctl = jobs_actions.add_parser('datastaging',help='Job Datastaging Information for jobs preparing or running.')
+            DataStagingControl.register_job_parser(dds_job_ctl)
+
+            

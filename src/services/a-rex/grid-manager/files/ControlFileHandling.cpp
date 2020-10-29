@@ -37,6 +37,8 @@ const char * const sfx_output      = ".output";        // Output files written b
 const char * const sfx_inputstatus = ".input_status";  // Input files staged by client
 const char * const sfx_outputstatus = ".output_status";// Output files already staged out
 const char * const sfx_statistics  = ".statistics";    // Statistical information on data staging
+const char * const sfx_lrmsdone    = ".lrms_done";     // Job execution in lrms exit code and failure reason
+const char * const sfx_lrmsjob     = ".lrms_job";      // File LRMS backends keep their specific information
 
 // Sub-directories for different jobs states
 const char * const subdir_new      = "accepting";      // Submitted but not yet picked up by A-REX
@@ -47,7 +49,7 @@ const char * const subdir_rew      = "restarting";     // Jobs waiting to restar
 static Arc::Logger& logger = Arc::Logger::getRootLogger();
 
 static job_state_t job_state_read_file(const std::string &fname,bool &pending);
-static bool job_state_write_file(const std::string &fname,job_state_t state,bool pending = false);
+static bool job_state_write_file(const std::string &fname,job_state_t state,bool pending);
 static bool job_mark_put(Arc::FileAccess& fa, const std::string &fname);
 static bool job_mark_remove(Arc::FileAccess& fa,const std::string &fname);
 
@@ -131,17 +133,17 @@ bool check_file_owner(const std::string &fname,uid_t &uid,gid_t &gid,time_t &t) 
 }
 
 bool job_lrms_mark_check(const JobId &id,const GMConfig &config) {
-  std::string fname = config.ControlDir() + "/job." + id + ".lrms_done";
+  std::string fname = config.ControlDir() + "/job." + id + sfx_lrmsdone;
   return job_mark_check(fname);
 }
 
 bool job_lrms_mark_remove(const JobId &id,const GMConfig &config) {
-  std::string fname = config.ControlDir() + "/job." + id + ".lrms_done";
+  std::string fname = config.ControlDir() + "/job." + id + sfx_lrmsdone;
   return job_mark_remove(fname);
 }
 
 LRMSResult job_lrms_mark_read(const JobId &id,const GMConfig &config) {
-  std::string fname = config.ControlDir() + "/job." + id + ".lrms_done";
+  std::string fname = config.ControlDir() + "/job." + id + sfx_lrmsdone;
   LRMSResult r("-1 Internal error");
   std::ifstream f(fname.c_str()); if(! f.is_open() ) return r;
   f>>r;
@@ -499,6 +501,11 @@ bool job_xml_read_file(const JobId &id,const GMConfig &config,std::string &xml) 
   return job_description_read_file(fname,xml);
 }
 
+bool job_xml_check_file(const JobId &id,const GMConfig &config) {
+  std::string fname = config.ControlDir() + "/job." + id + sfx_xml;
+  return job_mark_check(fname);
+}
+
 bool job_xml_write_file(const JobId &id,const GMConfig &config,const std::string &xml) {
   std::string fname = config.ControlDir() + "/job." + id + sfx_xml;
   return Arc::FileCreate(fname, xml);
@@ -688,7 +695,8 @@ bool job_proxy_read_file(const JobId &id,const GMConfig &config,std::string &cre
 bool job_clean_finished(const JobId &id,const GMConfig &config) {
   std::string fname;
   fname = config.ControlDir()+"/job."+id+".proxy.tmp"; remove(fname.c_str());
-  fname = config.ControlDir()+"/job."+id+".lrms_done"; remove(fname.c_str());
+  fname = config.ControlDir()+"/job."+id+sfx_lrmsdone; remove(fname.c_str());
+  fname = config.ControlDir()+"/job."+id+sfx_lrmsjob; remove(fname.c_str());
   return true;
 }
 

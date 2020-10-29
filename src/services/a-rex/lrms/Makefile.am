@@ -1,4 +1,4 @@
-dist_pkgdata_DATA = cancel_common.sh submit_common.sh scan_common.sh
+dist_pkgdata_DATA = cancel_common.sh submit_common.sh scan_common.sh community_rtes.sh
 pkgdata_DATA = lrms_common.sh
 
 if PYTHON_LRMS_ENABLED
@@ -7,7 +7,7 @@ else
 PYTHON_LRMS =
 endif
 
-SUBDIRS = pbs fork sge condor lsf ll slurm boinc test $(PYTHON_LRMS)
+SUBDIRS = pbs pbspro fork sge condor lsf ll slurm boinc test $(PYTHON_LRMS)
 
-DIST_SUBDIRS = pbs fork sge condor lsf ll slurm boinc test \
+DIST_SUBDIRS = pbs pbspro fork sge condor lsf ll slurm boinc test \
 	       slurmpy arc

@@ -41,6 +41,10 @@ namespace ArcDMCXrootd {
       writing(false){
     // set xrootd log level
     set_log_level();
+    // make sure path starts with two slashes
+    if (url.Path().find("//") != 0) {
+      this->url.ChangePath("/" + url.Path());
+    }
   }
 
   DataPointXrootd::~DataPointXrootd() {
@@ -428,12 +432,12 @@ namespace ArcDMCXrootd {
         logger.msg(VERBOSE, "Could not stat file %s: %s", u.plainstr(), StrError(errno));
         return DataStatus(DataStatus::StatError, errno);
       }
-      if (verb & INFO_TYPE_CONTENT) {
+      if (S_ISREG(st.st_mode) && (verb & INFO_TYPE_CONTENT)) {
         if (u.HTTPOption("xrdcl.unzip") != "") {
           logger.msg(WARNING, "Not getting checksum of zip constituent");
         } else {
           char buf[256];
-          if (XrdPosixXrootd::Getxattr(u.plainstr().c_str(), "xroot.cksum", &buf, sizeof(buf)) == -1) {
+          if (XrdPosixXrootd::Getxattr(u.plainstr().c_str(), "xroot.cksum", buf, sizeof(buf)) == -1) {
             logger.msg(WARNING, "Could not get checksum of %s: %s", u.plainstr(), StrError(errno));
           } else {
             std::string csum(buf);
@@ -481,6 +485,7 @@ namespace ArcDMCXrootd {
     }
 
     struct dirent* entry;
+    errno = 0; // reset because it is used as error indicator
     while ((entry = XrdPosixXrootd::Readdir(dir))) {
       FileInfo f;
       if (verb > INFO_TYPE_NAME) {
@@ -489,10 +494,12 @@ namespace ArcDMCXrootd {
       }
       f.SetName(entry->d_name);
       files.push_back(f);
+      errno = 0;
     }
     if (errno != 0) {
-      logger.msg(VERBOSE, "Error while reading dir %s: %s", url.plainstr(), StrError(errno));
-      return DataStatus(DataStatus::ListError, errno);
+      int errNo = errno;
+      logger.msg(VERBOSE, "Error while reading dir %s: %s", url.plainstr(), StrError(errNo));
+      return DataStatus(DataStatus::ListError, errNo);
     }
     XrdPosixXrootd::Closedir(dir);
 
@@ -585,10 +592,15 @@ namespace ArcDMCXrootd {
   }
 
   DataStatus DataPointXrootd::Transfer(const URL& otherendpoint, bool source, TransferCallback callback) {
+    URL otherurl(otherendpoint);
+    // make sure path starts with two slashes
+    if (otherurl.Path().find("//") != 0) {
+      otherurl.ChangePath("/" + otherurl.Path());
+    }
     if (source) {
-      return copy_file(url.plainstr(), otherendpoint.plainstr(), callback);
+      return copy_file(url.plainstr(), otherurl.plainstr(), callback);
     } else {
-      return copy_file(otherendpoint.plainstr(), url.plainstr(), callback);
+      return copy_file(otherurl.plainstr(), url.plainstr(), callback);
     }
   }
 
@@ -606,11 +618,9 @@ namespace ArcDMCXrootd {
     // communication in DTR so better to use no debugging
     XrdCl::Log *log = XrdCl::DefaultEnv::GetLog();
     if (logger.getThreshold() == DEBUG) {
-      XrdPosixXrootd::setDebug(1);
       log->SetLevel(XrdCl::Log::DumpMsg);
     }
     else {
-      XrdPosixXrootd::setDebug(0);
       log->SetLevel(XrdCl::Log::ErrorMsg);
     }
   }

@@ -27,6 +27,17 @@ add_library_path() {
 prog=arched
 RUN=yes
 
+send_systemd_notify() {
+    # return if no systemd-notify found
+    type systemd-notify >/dev/null 2>&1 || return
+    systemd-notify "$@"
+}
+
+log_failure_msg() {
+    send_systemd_notify --status "Error: $@"
+    echo $@
+}
+
 # sysconfig files
 if [ -r /etc/sysconfig/nordugrid ]; then
     . /etc/sysconfig/nordugrid
@@ -43,7 +54,7 @@ fi
 GLOBUS_LOCATION=${GLOBUS_LOCATION:-@DEFAULT_GLOBUS_LOCATION@}
 if [ -n "$GLOBUS_LOCATION" ]; then
     if [ ! -d "$GLOBUS_LOCATION" ]; then
-        echo "GLOBUS_LOCATION ($GLOBUS_LOCATION) not found"
+        log_failure_msg "GLOBUS_LOCATION ($GLOBUS_LOCATION) not found"
         exit 1
     fi
     export GLOBUS_LOCATION
@@ -52,7 +63,7 @@ fi
 # ARC_LOCATION
 ARC_LOCATION=${ARC_LOCATION:-@prefix@}
 if [ ! -d "$ARC_LOCATION" ]; then
-    echo "ARC_LOCATION ($ARC_LOCATION) not found"
+    log_failure_msg "ARC_LOCATION ($ARC_LOCATION) not found"
     exit 1
 fi
 export ARC_LOCATION
@@ -71,18 +82,9 @@ else
 fi
 export LD_LIBRARY_PATH
 
-python_site_arch=`python -c 'from distutils import sysconfig; print(sysconfig.get_python_lib(1,0, "'${ARC_LOCATION}'"))'`
-if [ "x$PYTHONPATH" = "x" ]; then
-    PYTHONPATH=${python_site_arch}
-else
-    PYTHONPATH=${python_site_arch}:${PYTHONPATH}
-fi
-export PYTHONPATH
-
-
 testconfigblock() {
     $ARC_LOCATION/@pkglibexecsubdir@/arcconfig-parser --runconfig "$1" --load -b "$2" 2>/dev/null 1>&2
-    if [ "$?" = '0' ] ; then
+    if [ $? -eq 0 ] ; then
         echo 'true'
     else
         echo 'false'
@@ -91,7 +93,7 @@ testconfigblock() {
 
 readorigconfigvar() {
     value=`$ARC_LOCATION/@pkglibexecsubdir@/arcconfig-parser --config "$1" -b "$3" -o "$2" 2>/dev/null`
-    if [ "$?" = '0' ] ; then
+    if [ $? -eq 0 ] ; then
         echo "$value"
         exit 0
     else
@@ -108,7 +110,7 @@ readconfigvar() {
         shift
     done
     value=`$ARC_LOCATION/@pkglibexecsubdir@/arcconfig-parser --runconfig "$fname" --load $blocks -o "$optname" 2>/dev/null`
-    if [ "$?" = '0' ] ; then
+    if [ $? -eq 0 ] ; then
         echo "$value"
         exit 0
     else
@@ -129,32 +131,70 @@ fi
 PID_FILE=`readorigconfigvar "$ARC_CONFIG" pidfile arex`
 if [ "x$PID_FILE" = "x" ]; then
     # Missing default value for pidfile means no service block is present
-    echo "ARC configuration is missing [arex] block"
+    log_failure_msg "ARC configuration is missing [arex] block"
     exit 1
 fi
-ARC_RUNTIME_CONFIG=
+
+if [ "$1" = "--getpidfile" ] ; then
+    echo $PID_FILE
+    exit 0
+fi
 
 ARC_RUNTIME_CONFIG=`echo "$PID_FILE" | sed 's#\([^\./]*\)\.[^\./]*$#\1#'`
 ARC_RUNTIME_CONFIG="${ARC_RUNTIME_CONFIG}.cfg"
 
 
+mkdir_for_user() {
+    dirpath="$1"
+    username="$2"
+    groupname="$3"
+
+    if [ ! -d "$dirpath" ] ; then
+        mkdir -p "$dirpath"
+        if [ ! -z "$username" ] ; then
+            if [ ! -z "$groupname" ] ; then
+                chown "$username:$groupname" "$dirpath"
+            else
+                chown "$username" "$dirpath"
+            fi
+        fi
+    fi
+}
+
+mkfile_for_user() {
+    filepath="$1"
+    username="$2"
+    groupname="$3"
+
+    if [ ! -f "$filepath" ] ; then
+        touch "$filepath"
+    fi
+    if [ ! -z "$username" ] ; then
+        if [ ! -z "$groupname" ] ; then
+            chown "$username:$groupname" "$filepath"
+        else
+            chown "$username" "$filepath"
+        fi
+    fi
+}
+
 prepare() {
 
     CMD="$ARC_LOCATION/sbin/$prog"
     if [ ! -x "$CMD" ]; then
-        echo "Missing executable"
+        log_failure_msg "Missing $CMD executable"
         exit 1
     fi
 
     if [ ! -r "$ARC_CONFIG" ]; then
-        echo "ARC configuration not found (usually /etc/arc.conf)"
+        log_failure_msg "ARC configuration not found (usually /etc/arc.conf)"
         exit 1
     fi
 
     # Pre-process configuration
     $ARC_LOCATION/@pkglibexecsubdir@/arcconfig-parser --config "$ARC_CONFIG" --runconfig "$ARC_RUNTIME_CONFIG" --save 2>/dev/null
-    if [ ! "$?" = '0' ] ; then
-        echo "ARC configuration processing failed"
+    if [ $? -ne 0 ] ; then
+        log_failure_msg "ARC configuration processing failed"
         exit 1
     fi
 
@@ -179,6 +219,7 @@ prepare() {
     GLOBUS_UDP_PORT_RANGE=`readconfigvar "$ARC_RUNTIME_CONFIG" globus_udp_port_range arex/data-staging`
     VOMS_PROCESSING=`readconfigvar "$ARC_RUNTIME_CONFIG" voms_processing common`
     mapping_present=`testconfigblock "$ARC_RUNTIME_CONFIG" mapping`
+    authtokens_present=`testconfigblock "$ARC_RUNTIME_CONFIG" authtokens`
     USERMAP_BLOCK=''
     if [ "$mapping_present" = 'true' ] ; then
       USERMAP_BLOCK='mapping'
@@ -232,23 +273,22 @@ prepare() {
                 arex_port="80"
             fi
         else
-            echo "Unsupported protocol '$arex_proto' for WS interface"
+            log_failure_msg "Unsupported protocol '$arex_proto' for WS interface URL"
             exit 1
         fi
         arex_endpoint="<arex:endpoint>$arex_mount_point</arex:endpoint>"
         arex_path="/$arex_path"
 
-        if [ ! -d `dirname $WSLOGFILE` ]; then
-            mkdir -p `dirname $WSLOGFILE`
-        fi
+        mkdir_for_user `dirname "$WSLOGFILE"` "$USERNAME" "$GROUPNAME"
+        mkfile_for_user "$WSLOGFILE" "$USERNAME" "$GROUPNAME"
     fi
     if [ "$arex_present" = 'true' ] ; then
         if [ "$ws_present" != 'true' ] ; then
-            echo  "WS interface must be turned on to use A-REX/EMIES WS service"
+            log_failure_msg  "WS interface must be turned on to use A-REX/EMIES WS service"
             exit 1
         else
             if [ "$mapping_present" != 'true' ] ; then
-                echo "For A-REX/EMIES WS interface to work mapping must be enabled"
+                log_failure_msg "For A-REX/EMIES WS interface to work mapping must be enabled"
                 exit 1
             fi
         fi
@@ -262,8 +302,7 @@ prepare() {
     if [ ! -z "$arguspep_endpoint" ]; then
       argus_plugin="${argus_plugin}<Plugins><Name>arguspepclient</Name></Plugins>"
       if [ ! -f "$ARC_LOCATION/lib/arc/libarguspepclient.so" ] && [ ! -f "$ARC_LOCATION/lib64/arc/libarguspepclient.so" ]; then
-        echo "Plugin arguspepclient(libarguspepclient.so) not found"
-        echo "You may need to install corresponding package"
+        log_failure_msg "Plugin arguspepclient(libarguspepclient.so) not found. You may need to install corresponding package"
         exit 1
       fi
       arguspep_profile=`readconfigvar "$ARC_RUNTIME_CONFIG" arguspep_profile arex/ws/argus`
@@ -274,7 +313,7 @@ prepare() {
       if [ "$arguspep_usermap" = "no" ]; then arguspep_usermap="false"; fi
       if [ "$mapping_present" != 'true' ]; then
         if [ "$arguspep_usermap" = 'true' ]; then
-          echo "Can't map user identity through Argus PEP because mapping is disabled for the service."
+          log_failure_msg "Can't map user identity through Argus PEP because mapping is disabled for the service."
           exit 1
         fi
       fi
@@ -294,8 +333,7 @@ prepare() {
     if [ ! -z "$arguspdp_endpoint" ]; then
       argus_plugin="${argus_plugin}<Plugins><Name>arguspdpclient</Name></Plugins>"
       if [ ! -f "$ARC_LOCATION/lib/arc/libarguspdpclient.so" ] && [ ! -f "$ARC_LOCATION/lib64/arc/libarguspdpclient.so" ]; then
-        echo "Plugin arguspdpclient(libarguspdpclient.so) not found"
-        echo "You may need to install corresponding package"
+        log_failure_msg "Plugin arguspdpclient(libarguspdpclient.so) not found. You may need to install corresponding package"
         exit 1
       fi
       arguspdp_profile=`readconfigvar "$ARC_RUNTIME_CONFIG" arguspdp_profile arex/ws/argus`
@@ -306,7 +344,7 @@ prepare() {
       if [ "$arguspdp_usermap" = "no" ]; then arguspdp_usermap="false"; fi
       if [ "$mapping_present" != 'true' ]; then
         if [ "$arguspdp_usermap" = 'true' ]; then
-          echo "Can't map user identity through Argus PDP because mapping is disabled for the service."
+          log_failure_msg "Can't map user identity through Argus PDP because mapping is disabled for the service."
           exit 1
         fi
       fi
@@ -333,7 +371,7 @@ prepare() {
     use_candypond=`testconfigblock "$ARC_RUNTIME_CONFIG" arex/ws/candypond`
     if [ "$use_candypond" = "true" ]; then
         if [ "$ws_present" != 'true' ] ; then
-            echo "WS interface must be turned on to use candypond"
+            log_failure_msg "WS interface must be turned on to use candypond"
             exit 1
         fi
         candypond_plexer="<next id=\"candypond\">^$arex_path/candypond</next>"
@@ -376,7 +414,7 @@ prepare() {
 
     AREX_CONFIG=`mktemp -t arex.xml.XXXXXX`
     if [ -z "$AREX_CONFIG" ] ; then
-        echo "Failed to create temporary file"
+        log_failure_msg "Failed to create temporary file"
         exit 1
     fi
 
@@ -392,9 +430,9 @@ prepare() {
         *) LOGLEVEL="INFO" ;;
     esac
 
-    if [ ! -d `dirname "$LOGFILE"` ]; then
-        mkdir -p `dirname "$LOGFILE"`
-    fi
+    mkdir_for_user `dirname "$LOGFILE"` "$USERNAME" "$GROUPNAME"
+    mkfile_for_user "$LOGFILE" "$USERNAME" "$GROUPNAME"
+
     if [ "$WATCHDOG" = "yes" ] ; then
         WATCHDOG="true"
     else
@@ -409,18 +447,19 @@ prepare() {
     fi
 
     # Authorization and user mapping for A-REX/EMIES
-    emies_legacy_shc="
-<!-- Do authorization in same way as jobs plugin of gridftpd does -->
-<!-- Beware of hardcoded block name -->
-<SecHandler name=\"arc.authz\" event=\"incoming\">
-  <PDP name=\"arclegacy.pdp\">
-    <ConfigBlock>
-      <ConfigFile>$ARC_RUNTIME_CONFIG</ConfigFile>
-      <BlockName>$USERAUTH_BLOCK</BlockName>
-    </ConfigBlock>
-  </PDP>
-</SecHandler>
-"
+    emies_legacy_shc=""
+#    emies_legacy_shc="
+#<!-- Do authorization in same way as jobs plugin of gridftpd does -->
+#<!-- Beware of hardcoded block name -->
+#<SecHandler name=\"arc.authz\" event=\"incoming\">
+#  <PDP name=\"arclegacy.pdp\">
+#    <ConfigBlock>
+#      <ConfigFile>$ARC_RUNTIME_CONFIG</ConfigFile>
+#      <BlockName>$USERAUTH_BLOCK</BlockName>
+#    </ConfigBlock>
+#  </PDP>
+#</SecHandler>
+#"
     if [ "$mapping_present" = 'true' ]; then
       emies_legacy_shc="$emies_legacy_shc
 <!-- Perform client mapping according to rules of gridftpd -->
@@ -430,6 +469,17 @@ prepare() {
     <BlockName>$USERMAP_BLOCK</BlockName>
   </ConfigBlock>
 </SecHandler>"
+    fi
+
+
+  
+    authtokens_plugin=""
+    authtokens_handler=""
+    if [ "$authtokens_present" = 'true' ]; then
+      authtokens_plugin="<Plugins><Name>arcshcotokens</Name></Plugins>"
+      authtokens_handler="
+<!-- Collect OTokens information -->
+<SecHandler name=\"otokens.handler\" event=\"incoming\"/>"
     fi
 
     # A-Rex without WS interface
@@ -487,6 +537,7 @@ prepare() {
   <Plugins><Name>identitymap</Name></Plugins>
   <Plugins><Name>arcshc</Name></Plugins>
   <Plugins><Name>arcshclegacy</Name></Plugins>
+  $authtokens_plugin
   $argus_plugin
   <Chain>
     <Component name=\"tcp.service\" id=\"tcp\">
@@ -496,6 +547,7 @@ prepare() {
     <Component name=\"http.service\" id=\"http\">
       <next id=\"soap\">POST</next>
       <next id=\"plexer\"/>
+      $authtokens_handler
     </Component>
     <Component name=\"soap.service\" id=\"soap\">
       <next id=\"plexer\"/>
@@ -547,6 +599,7 @@ prepare() {
   <Plugins><Name>identitymap</Name></Plugins>
   <Plugins><Name>arcshc</Name></Plugins>
   <Plugins><Name>arcshclegacy</Name></Plugins>
+  $authtokens_plugin
   $argus_plugin
   <Chain>
     <Component name=\"tcp.service\" id=\"tcp\">
@@ -559,10 +612,12 @@ prepare() {
       <CertificatePath>$X509_USER_CERT</CertificatePath>
       <CACertificatesDir PolicyGlobus=\"true\">$X509_CERT_DIR</CACertificatesDir>
       <VOMSProcessing>$VOMS_PROCESSING</VOMSProcessing>
+      <ClientAuthn>false</ClientAuthn>
     </Component>
     <Component name=\"http.service\" id=\"http\">
       <next id=\"soap\">POST</next>
       <next id=\"plexer\"/>
+      $authtokens_handler
       <!-- Match client to legacy authorization groups -->
       <SecHandler name=\"arclegacy.handler\" event=\"incoming\">
         <ConfigFile>$ARC_RUNTIME_CONFIG</ConfigFile>
@@ -600,23 +655,49 @@ prepare() {
         fi
     fi
 
+    # setup logfile in case it is not there yet
     if [ ! -z "$USERNAME" ] ; then
-        [ -f $AREX_CONFIG ] && chown $USERNAME $AREX_CONFIG
+        if [ ! -z "$GROUPNAME" ] ; then
+            [ -f $AREX_CONFIG ] && chown "$USERNAME:$GROUPNAME" "$AREX_CONFIG"
+        else
+            [ -f $AREX_CONFIG ] && chown "$USERNAME" "$AREX_CONFIG"
+        fi
     fi
 
     # prepare to collect crash information
     COREDIR=`dirname "${LOGFILE}"`/arccore
-    mkdir -p "${COREDIR}"
+    mkdir_for_user "${COREDIR}" "$USERNAME" "$GROUPNAME"
     cd "${COREDIR}"
     ulimit -c unlimited
+}
+
+validate() {
+    CHECK_CMD=$ARC_LOCATION/@pkglibexecsubdir@/arc-config-check
+    if [ ! -x $CHECK_CMD ]; then
+        log_failure_msg "Could not find or execute arc-config-check tool"
+        return 1
+    fi
+    eval "$CHECK_CMD --config $ARC_CONFIG $@"
+    RETVAL=$?
+    return $RETVAL
 }
 
 if [ "$RUN" != "yes" ] ; then
     echo "a-rex disabled, please adjust the configuration to your needs "
     echo "and then set RUN to 'yes' in /etc/default/a-rex to enable it."
-    return 0
+    exit 0
 fi
 
 prepare
 
-exec $CMD
+echo "Validating A-REX setup..." >> "$LOGFILE"
+validate >> "$LOGFILE" 2>&1
+RETVAL=$?
+if [ $RETVAL != 0 ]; then
+    # Run validator again to print errors to stdout
+    validate --skip-warnings
+    log_failure_msg "Configuration validation failed"
+    exit 1
+fi
+
+exec $CMD "$@"

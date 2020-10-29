@@ -225,12 +225,20 @@ int RUNMAIN(arcsync)(int argc, char **argv) {
     }
   }
 
-  std::list<Arc::Endpoint> endpoints = getServicesFromUserConfigAndCommandLine(usercfg, opt.indexurls, opt.clusters);
+  // legacy options => new options
+  for (std::list<std::string>::const_iterator it = opt.clusters.begin(); it != opt.clusters.end(); ++it) {
+    opt.computing_elements.push_back(*it); 
+  }
+  for (std::list<std::string>::const_iterator it = opt.indexurls.begin(); it != opt.indexurls.end(); ++it) {
+    opt.registries.push_back(*it);
+  }
+
+  std::list<Arc::Endpoint> endpoints = getServicesFromUserConfigAndCommandLine(usercfg, opt.registries, opt.computing_elements);
 
   std::list<std::string> rejectDiscoveryURLs = getRejectDiscoveryURLsFromUserConfigAndCommandLine(usercfg, opt.rejectdiscovery);
 
   if (endpoints.empty()) {
-    logger.msg(Arc::ERROR, "No services specified. Please configure default services in the client configuration,"
+    logger.msg(Arc::ERROR, "No services specified. Please configure default services in the client configuration, "
                            "or specify a cluster or index (-c or -g options, see arcsync -h).");
     return 1;
   }

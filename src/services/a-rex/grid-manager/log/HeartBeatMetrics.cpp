@@ -21,10 +21,10 @@ namespace ARex {
 static Arc::Logger& logger = Arc::Logger::getRootLogger();
 
 HeartBeatMetrics::HeartBeatMetrics():enabled(false),proc(NULL) {
+  free = 0;
+  totalfree = 0;
 
-  time_now = time(NULL);
-  time_delta = time(NULL);
-  time_lastupdate = time(NULL);
+  time_lastupdate = (time_delta = (time_now = time(NULL)));
 
   time_update = false;
 }
@@ -103,7 +103,7 @@ bool HeartBeatMetrics::RunMetrics(const std::string name, const std::string& val
   if(proc) return false;
   std::list<std::string> cmd;
   if(tool_path.empty()) {
-    logger.msg(Arc::ERROR,"gmetric_bin_path empty in arc.conf (should never happen the default value should be used");
+    logger.msg(Arc::ERROR,"gmetric_bin_path empty in arc.conf (should never happen the default value should be used)");
     return false;
   } else {
     cmd.push_back(tool_path);
@@ -114,6 +114,8 @@ bool HeartBeatMetrics::RunMetrics(const std::string name, const std::string& val
   };
   cmd.push_back("-n");
   cmd.push_back(name);
+  cmd.push_back("-g");
+  cmd.push_back("arc_system");
   cmd.push_back("-v");
   cmd.push_back(value);
   cmd.push_back("-t");//unit-type
@@ -133,8 +135,8 @@ bool HeartBeatMetrics::RunMetrics(const std::string name, const std::string& val
 }
 
 void HeartBeatMetrics::SyncAsync(void* arg) {
-  HeartBeatMetrics& it = *reinterpret_cast<HeartBeatMetrics*>(arg);
-  if(&it) {
+  if(arg) {
+    HeartBeatMetrics& it = *reinterpret_cast<HeartBeatMetrics*>(arg);
     Glib::RecMutex::Lock lock_(it.lock);
     if(it.proc) {
       // Continue only if no failure in previous call.

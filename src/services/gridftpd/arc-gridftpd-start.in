@@ -27,6 +27,17 @@ add_library_path() {
 prog=gridftpd
 RUN=yes
 
+send_systemd_notify() {
+    # return if no systemd-notify found
+    type systemd-notify >/dev/null 2>&1 || return
+    systemd-notify "$@"
+}
+
+log_failure_msg() {
+    send_systemd_notify --status "Error: $@"
+    echo $@
+}
+
 # sysconfig files
 if [ -r /etc/sysconfig/nordugrid ]; then
     . /etc/sysconfig/nordugrid
@@ -48,7 +59,7 @@ fi
 # GLOBUS_LOCATION
 GLOBUS_LOCATION=${GLOBUS_LOCATION:-@DEFAULT_GLOBUS_LOCATION@}
 if [ ! -d "$GLOBUS_LOCATION" ]; then
-    echo "GLOBUS_LOCATION ($GLOBUS_LOCATION) not found"
+    log_failure_msg "GLOBUS_LOCATION ($GLOBUS_LOCATION) not found"
     exit 1
 fi
 export GLOBUS_LOCATION
@@ -56,14 +67,14 @@ export GLOBUS_LOCATION
 # ARC_LOCATION
 ARC_LOCATION=${ARC_LOCATION:-@prefix@}
 if [ ! -d "$ARC_LOCATION" ]; then
-    echo "ARC_LOCATION ($ARC_LOCATION) not found"
+    log_failure_msg "ARC_LOCATION ($ARC_LOCATION) not found"
     exit 1
 fi
 export ARC_LOCATION
 
 readorigconfigvar() {
     value=`$ARC_LOCATION/@pkglibexecsubdir@/arcconfig-parser --config "$1" -b "$3" -o "$2" 2>/dev/null`
-    if [ "$?" = '0' ] ; then
+    if [ $? -eq 0 ] ; then
         echo "$value"
         exit 0
     else
@@ -80,7 +91,7 @@ readconfigvar() {
         shift
     done
     value=`$ARC_LOCATION/@pkglibexecsubdir@/arcconfig-parser --runconfig "$fname" --load $blocks -o "$optname" 2>/dev/null`
-    if [ "$?" = '0' ] ; then
+    if [ $? -eq 0 ] ; then
         echo "$value"
         exit 0
     else
@@ -92,17 +103,17 @@ check_cert() {
   X509_USER_CERT=`readconfigvar "$ARC_RUNTIME_CONFIG" x509_host_cert gridftpd common`
   X509_USER_KEY=`readconfigvar "$ARC_RUNTIME_CONFIG" x509_host_key gridftpd common`
   if [ ! -f "$X509_USER_CERT" ] ; then
-    echo "Host certificate not found"
+    log_failure_msg "Host certificate $X509_USER_CERT is not found"
     exit 1
   fi
   if [ ! -f "$X509_USER_KEY" ] ; then
-    echo "Host key not found"
+    log_failure_msg "Host key $X509_USER_KEY is not found"
     exit 1
   fi
   # check permissions on key
   perms=`stat -L -c %a "$X509_USER_KEY"`
   if [ "$perms" != "600" ] && [ "$perms" != "400" ] ; then
-    echo "Host key must be readable only by user"
+    log_failure_msg "Host key must be readable only by user"
     exit 1
   fi
 }
@@ -117,7 +128,7 @@ if [ "x$ARC_CONFIG" = "x" ]; then
 fi
 
 if [ ! -r "$ARC_CONFIG" ]; then
-    echo "ARC configuration not found (usually /etc/arc.conf)"
+    log_failure_msg "ARC configuration not found (usually /etc/arc.conf)"
     exit 1
 fi
 
@@ -133,36 +144,32 @@ else
 fi
 export LD_LIBRARY_PATH
 
-python_site_arch=`python -c 'from distutils import sysconfig; print(sysconfig.get_python_lib(1,0, "'${ARC_LOCATION}'"))'`
-if [ "x$PYTHONPATH" = "x" ]; then
-    PYTHONPATH=${python_site_arch}
-else
-    PYTHONPATH=${python_site_arch}:${PYTHONPATH}
-fi
-export PYTHONPATH
-
-# PID and lock file
+# PID file
 PID_FILE=`readorigconfigvar "$ARC_CONFIG" pidfile gridftpd`
 if [ "x$PID_FILE" = "x" ]; then
     # Missing default value for pidfile means no service block is present
-    echo "ARC configuration is missing [gridftpd] block"
+    log_failure_msg "ARC configuration is missing [gridftpd] block"
     exit 1
 fi
-ARC_RUNTIME_CONFIG=
+
+if [ "$1" = "--getpidfile" ] ; then
+    echo $PID_FILE
+    exit 0
+fi
 
 ARC_RUNTIME_CONFIG=`echo "$PID_FILE" | sed 's#\([^\./]*\)\.[^\./]*$#\1#'`
 ARC_RUNTIME_CONFIG="${ARC_RUNTIME_CONFIG}.cfg"
 
 CMD="$ARC_LOCATION/sbin/$prog"
 if [ ! -x "$CMD" ]; then
-    echo "Missing executable"
+    log_failure_msg "Missing $CMD executable"
     exit 1
 fi
 
 # Pre-process configuration
 $ARC_LOCATION/@pkglibexecsubdir@/arcconfig-parser --config "$ARC_CONFIG" --runconfig "$ARC_RUNTIME_CONFIG" --save 2>/dev/null
-if [ ! "$?" = '0' ] ; then
-    echo "ARC configuration processing failed"
+if [ $? -ne 0 ] ; then
+    log_failure_msg "ARC configuration processing failed"
     exit 1
 fi
 
@@ -170,10 +177,19 @@ CMD="$CMD -c $ARC_RUNTIME_CONFIG"
 CMD="$CMD -P $PID_FILE"
 
 LOGFILE=`readconfigvar "$ARC_RUNTIME_CONFIG" logfile gridftpd`
+USERNAME=`readconfigvar "$ARC_RUNTIME_CONFIG" user gridftpd`
 if [ ! -d `dirname "$LOGFILE"` ]; then
     mkdir -p `dirname "$LOGFILE"`
+    if [ ! -z "$USERNAME" ] ; then
+        chown "$USERNAME" `dirname "$LOGFILE"`
+    fi
+fi
+if [ ! -z "$USERNAME" ] ; then
+    if [ -f "$LOGFILE" ] ; then
+        chown "$USERNAME" "$LOGFILE"
+    fi
 fi
 
 check_cert
 
-exec $CMD
+exec $CMD "$@"

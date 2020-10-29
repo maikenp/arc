@@ -75,35 +75,17 @@ AC_PATH_PROG(PERL, perl, /usr/bin/perl, :)
 test -n "$MKDIR_P" || MKDIR_P="$mkdir_p"
 AC_SUBST([MKDIR_P])
 
-dnl --with-docdir since older autoconf (<2.60) does not support --docdir
-AC_ARG_WITH([docdir],
-AC_HELP_STRING([--with-docdir=DIR],
-  [Install documentation in DIR [[default: ${datadir}/doc]]]),
-  [case $withval in
-    yes|no)
-      AC_MSG_ERROR([Invalid DIR])
-      ;;
-    *)
-      docdir="$withval"
-      ;;
-  esac
-],
-[
-  if test -z "$docdir"; then
-    docdir='${datadir}/doc/${PACKAGE}'
-  fi
-])
-AC_SUBST(docdir)
-
 # Use arc for "pkgdir" instead of nordugrid-arc (@PACKAGE@)
 pkgdatadir='${datadir}/arc'
 pkgincludedir='${includedir}/arc'
 pkglibdir='${libdir}/arc'
+extpkglibdir='${libdir}/arc/external'
 pkglibexecdir='${libexecdir}/arc'
 
 AC_SUBST(pkgdatadir)
 AC_SUBST(pkgincludedir)
 AC_SUBST(pkglibdir)
+AC_SUBST(extpkglibdir)
 AC_SUBST(pkglibexecdir)
 
 ARC_API
@@ -114,14 +96,19 @@ AC_ARG_WITH(systemd-units-location,
   [ unitsdir="$withval" ],
   [ unitsdir= ]
 )
-AM_CONDITIONAL([SYSTEMD_UNITS_ENABLED],[test "x$unitsdir" != "x"])
 AC_MSG_RESULT($unitsdir)
 AC_SUBST(unitsdir)
 
+AM_CONDITIONAL([SYSTEMD_UNITS_ENABLED],[test "x$unitsdir" != "x"])
+
 AC_ARG_WITH(sysv-scripts-location,
   AC_HELP_STRING([--with-sysv-scripts-location=<PATH>], [Location of the SYSV init scripts. [[autodetect]]]),
-  [ initddir="$withval" ],
   [
+    initddirauto="no"
+    initddir="$withval"
+  ],
+  [
+    initddirauto="yes"
     initddir=
     case "${host}" in
       *linux* | *kfreebsd* | *gnu* )
@@ -139,9 +126,10 @@ AC_ARG_WITH(sysv-scripts-location,
     esac
   ]
 )
-AM_CONDITIONAL([SYSV_SCRIPTS_ENABLED],[test "x$unitsdir" = "x" && test "x$initddir" != "x"])
 AC_MSG_RESULT($initddir)
 AC_SUBST(initddir)
+
+AM_CONDITIONAL([SYSV_SCRIPTS_ENABLED],[ ( test "x$initddirauto" == "xno" || test "x$unitsdir" = "x" ) && test "x$initddir" != "x"])
 
 AC_ARG_WITH(cron-scripts-prefix,
   AC_HELP_STRING([--with-cron-scripts-prefix=<PATH>], [Specify the location of the cron directory. [[SYSCONFDIR/cron.d]]]),
@@ -171,6 +159,7 @@ fi
 #  Features
 enables_ldap=yes
 enables_mysql=no
+enables_systemd=no
 enables_swig_python=yes
 # Features directly related to components
 enables_cppunit=yes
@@ -204,7 +193,6 @@ enables_monitor=yes
 enables_compute_client=yes
 enables_credentials_client=yes
 enables_data_client=yes
-enables_jura_client=yes
 enables_emies_client=yes
 enables_arcrest_client=yes
 #  Documentation
@@ -226,7 +214,6 @@ enables_compute_client=$enableval
 enables_credentials_client=$enableval
 enables_echo_client=$enableval
 enables_data_client=$enableval
-enables_jura_client=$enableval
 enables_emies_client=$enableval
 enables_arcrest_client=$enableval
 enables_hed=$enableval
@@ -254,7 +241,6 @@ enables_compute_client=$enableval
 enables_credentials_client=$enableval
 enables_echo_client=$enableval
 enables_data_client=$enableval
-enables_jura_client=$enableval
 enables_emies_client=$enableval
 enables_arcrest_client=$enableval
 enables_doc=$enableval
@@ -382,11 +368,19 @@ if test "$enables_python" = "yes"; then
 
   if test "X$PYTHON" != "X"; then
     PYNAME=`basename $PYTHON`
+    PKG_CHECK_MODULES(PYTHON, $PYNAME-embed, [
+    PYTHON_VERSION=`$PKG_CONFIG --modversion $PYNAME-embed`
+    PYTHON_MAJOR=`echo $PYTHON_VERSION|cut -f1 -d.`
+    ],[
     PKG_CHECK_MODULES(PYTHON, $PYNAME, [
     PYTHON_VERSION=`$PKG_CONFIG --modversion $PYNAME`
     PYTHON_MAJOR=`echo $PYTHON_VERSION|cut -f1 -d.`
     ],[
     PYNAME=python-`$PYTHON -c 'import sys; print(sys.version[[:3]])'`
+    PKG_CHECK_MODULES(PYTHON, $PYNAME-embed, [
+    PYTHON_VERSION=`$PKG_CONFIG --modversion $PYNAME-embed`
+    PYTHON_MAJOR=`echo $PYTHON_VERSION|cut -f1 -d.`
+    ],[
     PKG_CHECK_MODULES(PYTHON, $PYNAME, [
     PYTHON_VERSION=`$PKG_CONFIG --modversion $PYNAME`
     PYTHON_MAJOR=`echo $PYTHON_VERSION|cut -f1 -d.`
@@ -410,7 +404,7 @@ if test "$enables_python" = "yes"; then
             PYTHON_LIBS="-L$PY_LIBDEST/config -lpython$PYTHON_VERSION $PYTHON_LIBS"],[
             PYTHON_LIBS=""])])
     LDFLAGS=$SAVE_LDFLAGS
-    ])])
+    ])])])])
     AC_SUBST(PYTHON_VERSION)
     AC_SUBST(PYTHON_CFLAGS)
     AC_SUBST(PYTHON_LIBS)
@@ -513,11 +507,19 @@ if test "$enables_altpython" = "yes"; then
 
   if test "X$ALTPYTHON" != "X"; then
     ALTPYNAME=`basename $ALTPYTHON`
+    PKG_CHECK_MODULES(ALTPYTHON, $ALTPYNAME-embed, [
+    ALTPYTHON_VERSION=`$PKG_CONFIG --modversion $ALTPYNAME-embed`
+    ALTPYTHON_MAJOR=`echo $ALTPYTHON_VERSION|cut -f1 -d.`
+    ],[
     PKG_CHECK_MODULES(ALTPYTHON, $ALTPYNAME, [
     ALTPYTHON_VERSION=`$PKG_CONFIG --modversion $ALTPYNAME`
     ALTPYTHON_MAJOR=`echo $ALTPYTHON_VERSION|cut -f1 -d.`
     ],[
     ALTPYNAME=python-`$ALTPYTHON -c 'import sys; print(sys.version[[:3]])'`
+    PKG_CHECK_MODULES(ALTPYTHON, $ALTPYNAME-embed, [
+    ALTPYTHON_VERSION=`$PKG_CONFIG --modversion $ALTPYNAME-embed`
+    ALTPYTHON_MAJOR=`echo $ALTPYTHON_VERSION|cut -f1 -d.`
+    ],[
     PKG_CHECK_MODULES(ALTPYTHON, $ALTPYNAME, [
     ALTPYTHON_VERSION=`$PKG_CONFIG --modversion $ALTPYNAME`
     ALTPYTHON_MAJOR=`echo $ALTPYTHON_VERSION|cut -f1 -d.`
@@ -541,7 +543,7 @@ if test "$enables_altpython" = "yes"; then
             ALTPYTHON_LIBS="-L$ALTPY_LIBDEST/config -lpython$ALTPYTHON_VERSION $ALTPYTHON_LIBS"],[
             ALTPYTHON_LIBS=""])])
     LDFLAGS=$SAVE_LDFLAGS
-    ])])
+    ])])])])
     AC_SUBST(ALTPYTHON_VERSION)
     AC_SUBST(ALTPYTHON_CFLAGS)
     AC_SUBST(ALTPYTHON_LIBS)
@@ -644,6 +646,29 @@ fi
 AM_CONDITIONAL([PYLINT_ENABLED], [test "x$enables_pylint" = "xyes"])
 AC_MSG_NOTICE([Python example checking with pylint enabled: $enables_pylint])
 
+# check systemd daemon integration
+AC_ARG_ENABLE(systemd, AC_HELP_STRING([--enable-systemd], [enable use of the systemd daemon integration features]),[enables_systemd="$enableval"],[])
+if test "x$enables_systemd" = "xyes"; then
+systemd_daemon_save_LIBS=$LIBS
+LIBS=
+AC_SEARCH_LIBS(sd_listen_fds,[systemd systemd-daemon],
+  [have_sd_listen_fds=yes],[have_sd_listen_fds=no],$systemd_daemon_save_LIBS)
+AC_SEARCH_LIBS(sd_notify,[systemd systemd-daemon],
+  [have_sd_notify=yes],[have_sd_notify=no],$systemd_daemon_save_LIBS)
+AC_CHECK_HEADERS(systemd/sd-daemon.h,
+  [have_systemd_sd_daemon_h=yes],[have_systemd_sd_daemon_h=no])
+
+if test x"$have_sd_listen_fds" = x"yes" && \
+   test x"$have_sd_notify" = x"yes" && \
+   test x"$have_systemd_sd_daemon_h" = x"yes"; then
+  AC_DEFINE([HAVE_SYSTEMD_DAEMON],[1],[Define if you have systemd daemon])
+  SYSTEMD_DAEMON_LIBS=$LIBS
+else
+  AC_MSG_FAILURE([--enable-systemd was given, but test for systemd libraries had failed])
+fi
+LIBS=$systemd_daemon_save_LIBS
+fi
+AC_SUBST(SYSTEMD_DAEMON_LIBS)
 
 # check gthread
 if test "$enables_hed" = "yes"; then
@@ -686,13 +711,6 @@ AC_CHECK_HEADER([glibmm/optioncontext.h], [
     ]
   )
 ])
-AC_TRY_COMPILE([#include <glibmm.h>],[Glib::SignalChildWatch watch = Glib::signal_child_watch();],[glibmm_childwatch=yes],[glibmm_childwatch=no])
-if test "$glibmm_childwatch" = yes; then
-  AC_DEFINE(HAVE_GLIBMM_CHILDWATCH, 1,
-    [define if glibmm have support for controling state of children processes])
-else
-  AC_MSG_NOTICE([WARNING: glibmm has no API for controlling children processes - result of external processes may be inconsistent])
-fi
 AC_TRY_COMPILE([#include <glibmm.h>],[Glib::ModuleFlags flags = Glib::MODULE_BIND_LOCAL;],[glibmm_bind_local=yes],[glibmm_bind_local=no])
 if test "$glibmm_bind_local" = yes; then
   AC_DEFINE(HAVE_GLIBMM_BIND_LOCAL, 1,
@@ -851,7 +869,7 @@ PKG_CHECK_MODULES(SQLITE, [sqlite3 >= 3.6], [SQLITE_INSTALLED=yes] , [
 ])
 if test "x$SQLITE_INSTALLED" = "xyes" ; then
   AC_DEFINE(HAVE_SQLITE, 1, [define if SQLite is available])
-  # Check for finction available since 3.8
+  # Check for function available since 3.8
   SAVE_CFLAGS=$CFLAGS
   SAVE_LIBS=$LIBS
   CFLAGS="$CFLAGS $SQLITE_CFLAGS"
@@ -1823,6 +1841,12 @@ fi
 # Check for clock_gettime
 AC_SEARCH_LIBS([clock_gettime], [rt])
 
+# Define bash-completion dir
+PKG_CHECK_MODULES([BASH_COMPLETION], [bash-completion >= 2.0],
+  [bashcompdir="`pkg-config --variable=completionsdir --define-variable=prefix=${prefix} bash-completion`"],
+  [bashcompdir="${sysconfdir}/bash_completion.d"])
+AC_SUBST([bashcompdir])
+
 # check for fsusage
 if test "$enables_hed" = "yes"; then
 gl_FSUSAGE
@@ -2050,11 +2074,6 @@ AC_ARG_ENABLE(data_client, AC_HELP_STRING([--disable-data-client], [disable buil
 AC_MSG_NOTICE([Data client tools enabled: $enables_data_client])
 AM_CONDITIONAL([DATA_CLIENT_ENABLED],[test "x$enables_data_client" = "xyes"])
 
-AC_ARG_ENABLE(jura_client, AC_HELP_STRING([--disable-jura-client], [disable building client tool for communicating JURA]),
-  [enables_jura_client=$enableval],[])
-AC_MSG_NOTICE([JURA client tool enabled: $enables_jura_client])
-AM_CONDITIONAL([JURA_CLIENT_ENABLED],[test "x$enables_jura_client" = "xyes"])
-
 AC_ARG_ENABLE(emies_client, AC_HELP_STRING([--disable-emies-client], [disables building EMI ES-related client plugins.]),
   [enables_emies_client=$enableval],[])
 AC_MSG_NOTICE([EMI ES plugin(s) enabled: $enables_emies_client])
@@ -2073,7 +2092,6 @@ if test "$enables_hed" = "no"; then
           "$enables_compute_client" = "yes" -o \
           "$enables_credentials_client" = "yes" -o \
           "$enables_data_client" = "yes" -o \
-          "$enables_jura_client" = "yes" -o \
           ; then
     AC_MSG_ERROR(HED is needed for building any of the client or service tools. Please enable HED by using --enable-hed.)
   fi
@@ -2104,7 +2122,7 @@ AC_SUBST(nodename)
 posix_shell='/bin/sh'
 AC_SUBST(posix_shell)
 
-DATE=`date +%Y-%m-%d`
+DATE=`date +%Y-%m-%d ${SOURCE_DATE_EPOCH:+-u -d @$SOURCE_DATE_EPOCH}`
 AC_SUBST(DATE)
 #DATER=`date -R`
 DATER=`date +'%a, %d %b %Y %H:%M:%S %z'`
@@ -2158,7 +2176,7 @@ AC_CONFIG_FILES([Makefile
                  src/hed/libs/delegation/test/Makefile
                  src/hed/libs/xmlsec/Makefile
                  src/hed/libs/globusutils/Makefile
-                 src/hed/libs/scitokens/Makefile
+                 src/hed/libs/otokens/Makefile
                  src/hed/daemon/Makefile
                  src/hed/daemon/scripts/Makefile
                  src/hed/daemon/schema/Makefile
@@ -2228,6 +2246,7 @@ AC_CONFIG_FILES([Makefile
                  src/hed/shc/delegationsh/schema/Makefile
                  src/hed/shc/legacy/Makefile
                  src/hed/shc/legacy/schema/Makefile
+                 src/hed/shc/otokens/Makefile
                  src/hed/identitymap/Makefile
                  src/hed/identitymap/schema/Makefile
                  src/libs/Makefile
@@ -2247,6 +2266,7 @@ AC_CONFIG_FILES([Makefile
                  src/services/a-rex/grid-manager/gm-delegations-converter.8
                  src/services/a-rex/delegation/Makefile
                  src/services/a-rex/grid-manager/Makefile
+                 src/services/a-rex/grid-manager/accounting/Makefile
                  src/services/a-rex/grid-manager/conf/Makefile
                  src/services/a-rex/grid-manager/files/Makefile
                  src/services/a-rex/grid-manager/jobs/Makefile
@@ -2262,10 +2282,6 @@ AC_CONFIG_FILES([Makefile
                  src/services/a-rex/infoproviders/ConfigCentral.pm
                  src/services/a-rex/infoproviders/PerfData.pl
                  src/services/a-rex/infoproviders/test/Makefile
-                 src/services/a-rex/jura/Makefile
-                 src/services/a-rex/jura/jura.1
-                 src/services/a-rex/jura/ssm/Makefile
-                 src/services/a-rex/jura/ssm/ssmsend
                  src/services/a-rex/lrms/Makefile
                  src/services/a-rex/lrms/test/Makefile
                  src/services/a-rex/lrms/arc/Makefile
@@ -2292,6 +2308,10 @@ AC_CONFIG_FILES([Makefile
                  src/services/a-rex/lrms/pbs/submit-pbs-job
                  src/services/a-rex/lrms/pbs/cancel-pbs-job
                  src/services/a-rex/lrms/pbs/scan-pbs-job
+                 src/services/a-rex/lrms/pbspro/Makefile
+                 src/services/a-rex/lrms/pbspro/submit-pbspro-job
+                 src/services/a-rex/lrms/pbspro/cancel-pbspro-job
+                 src/services/a-rex/lrms/pbspro/scan-pbspro-job
                  src/services/a-rex/lrms/sge/Makefile
                  src/services/a-rex/lrms/sge/submit-sge-job
                  src/services/a-rex/lrms/sge/scan-sge-job
@@ -2350,6 +2370,8 @@ AC_CONFIG_FILES([Makefile
                  src/services/ldap-infosys/create-bdii-config
                  src/services/ldap-infosys/create-slapd-config
                  src/services/ldap-infosys/arc-infosys-ldap
+                 src/services/ldap-infosys/arc-infosys-ldap.service
+                 src/services/ldap-infosys/arc-infosys-ldap-slapd.service
                  src/services/monitor/Makefile
                  src/services/monitor/monitor
                  src/services/monitor/README
@@ -2405,11 +2427,13 @@ AC_CONFIG_FILES([Makefile
                  src/utils/python/arccandypond
                  src/utils/python/arcctl
                  src/utils/python/arcctl.1
-                 src/utils/python/jura-archive-manager
+                 src/utils/python/jura-ng
                  src/utils/python/arc/Makefile
                  src/utils/python/arc/gen_paths_dist.sh
                  src/utils/python/arc/utils/Makefile
                  src/utils/python/arc/control/Makefile
+                 src/utils/python/arc/ssm/Makefile
+                 src/utils/python/arc/ssm/ssmsend
                  src/utils/hed/wsdl2hed.1
                  src/utils/hed/arcplugin.1
                  src/utils/hed/Makefile
@@ -2417,6 +2441,7 @@ AC_CONFIG_FILES([Makefile
                  src/utils/gridmap/nordugridmap.8
                  src/utils/gridmap/Makefile
                  src/utils/Makefile
+                 src/wn/Makefile
                  src/doc/Makefile
                  src/doc/arc.conf.5
                  swig/Makefile
@@ -2439,7 +2464,6 @@ AC_CONFIG_FILES([Makefile
                  src/hed/daemon/scripts/arched
                  src/hed/daemon/scripts/arched.service
                  src/hed/daemon/scripts/arched-start
-                 arcbase.pc
                  src/doxygen/Makefile
 ])
 AC_CONFIG_FILES([src/utils/python/arcconfig-parser],
@@ -2470,6 +2494,7 @@ Enabled features:
 
 Local jobs info in BDB:    ${enables_dbjstore}
 Local jobs info in SQLite: ${enables_sqlitejstore}
+Systemd Integration:       ${enables_systemd}
 
 Python LRMS back-end dependency:
 Inline::Python Perl module: ${INLINE_PYTHON_FOUND}
@@ -2488,7 +2513,6 @@ ACIX service:       ${enables_acix}
 COMPUTE clients:    ${enables_compute_client}
 DATA clients:       ${enables_data_client}
 CREDENTIAL clients: ${enables_credentials_client}
-JURA client:        ${enables_jura_client}
 
 EMI ES client (ACC): ${enables_emies_client}
 ARC REST client (ACC): ${enables_arcrest_client}

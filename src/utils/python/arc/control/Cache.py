@@ -25,6 +25,8 @@ class CacheControl(ComponentControl):
         if not self.cache_dirs:
             self.logger.error('Failed to get cache directories from arc.conf.')
             sys.exit(1)
+        # Strip off any options
+        self.cache_dirs = [i.split()[0] for i in self.cache_dirs]
         self.logger.debug('Following cache locations found: %s', ','.join(self.cache_dirs))
 
     def stats(self):
@@ -37,18 +39,6 @@ class CacheControl(ComponentControl):
         """generate relative to cachedir path to cached content"""
         urlhash = hashlib.sha1(url.encode('utf-8')).hexdigest()
         return '/data/' + urlhash[0:2] + '/' + urlhash[2:]
-
-    @staticmethod
-    def __get_human_size(sizeinbytes):
-        """generate human-readable size representation like du command"""
-        sizeinbytes = abs(sizeinbytes)
-        output_fmt = '{0}'
-        for unit in ['bytes', 'K', 'M', 'G', 'T', 'P']:
-            if sizeinbytes < 1024.0:
-                return output_fmt.format(sizeinbytes, unit)
-            output_fmt = '{0:.1f}{1}'
-            sizeinbytes /= 1024.0
-        return '{0:.1f}E'.format(sizeinbytes)
 
     def list(self, args):
         all_cached = {}
@@ -78,7 +68,7 @@ class CacheControl(ComponentControl):
             for url in sorted(all_cached.keys()):
                 print('{0}\t{1}\t{2}'.format(url.ljust(max_url_len),
                                              all_cached[url]['file'].ljust(max_path_len),
-                                             self.__get_human_size(all_cached[url]['size'])))
+                                             get_human_readable_size(all_cached[url]['size'])))
         else:
             for url in sorted(all_cached.keys()):
                 print(url)
@@ -112,6 +102,7 @@ class CacheControl(ComponentControl):
 
         cache_actions = cache_ctl.add_subparsers(title='A-REX Cache Actions', dest='action',
                                                  metavar='ACTION', help='DESCRIPTION')
+        cache_actions.required = True
 
         cache_stats = cache_actions.add_parser('stats', help='Show cache usage statistics')
 
