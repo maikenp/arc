@@ -142,7 +142,8 @@ class DataStagingControl(ComponentControl):
             if ds_start and ds_end:
                 ds_time['dt']=str(ds_end - ds_start)
             elif ds_start:
-                ds_time['dt']=str(datetime.datetime.now() - ds_start)
+                """ The state info in the job logs are in UTC """
+                ds_time['dt']=str(datetime.datetime.utcnow() - ds_start)
             else:
                 return None
         return ds_time
@@ -301,7 +302,7 @@ class DataStagingControl(ComponentControl):
                 tobe_downloaded.append(fileN)
 
         """ General info """
-        print('\nInformation  about input-files for jobid {} '.format(jobid))
+        print('\nInformation about input-files for jobid {} '.format(jobid))
         
         """  Print out a list of all files and if downloaded or not """
         print('\nState of input-files:')
@@ -415,7 +416,7 @@ class DataStagingControl(ComponentControl):
 
                     
 
-    def get_summary_times(self,args):
+    def get_summary_jobs(self,args):
         
         """ Overview over duration of all datastaging processes in the chosen timewindow 
         Checks job.<jobid>.errors files that have been modified during the timewindow. 
@@ -492,8 +493,8 @@ class DataStagingControl(ComponentControl):
                 print('\t{0:<60}{1:<10}'.format(item[0],item[1]['dt'].split('.')[0]))
 
     def summarycontrol(self,args):
-        if args.summaryaction == 'time':
-            self.get_summary_times(args)
+        if args.summaryaction == 'jobs':
+            self.get_summary_jobs(args)
 
         
     def jobcontrol(self,args):
@@ -545,11 +546,11 @@ class DataStagingControl(ComponentControl):
         dds_summary_ctl.set_defaults(handler_class=DataStagingControl)
         dds_summary_actions = dds_summary_ctl.add_subparsers(title='Job Datastaging Summary Menu',dest='summaryaction',metavar='ACTION',help='DESCRIPTION')
         
-        dds_summary_time = dds_summary_actions.add_parser('time',help='Overview of datastaging durations (time that jobs in preparing state) for files where the job.<jobid>.errors file is modified within a selected (or default) timewindow')
-        dds_summary_time.add_argument('-d','--days',default=0,type=int,help='Modification time in days (default: %(default)s days)')
-        dds_summary_time.add_argument('-hr','--hours',default=1,type=int,help='Modification time in hours (default: %(default)s hour)')
-        dds_summary_time.add_argument('-m','--minutes',default=0,type=int,help='Modification time in minutes (default: %(default)s minutes)')
-        dds_summary_time.add_argument('-s','--seconds',default=0,type=int,help='Modification time in seconds (default: %(default)s seconds)')
+        dds_summary_jobs = dds_summary_actions.add_parser('jobs',help='Overview of time jobs have spend in preparation stage. Only jobs with datastaging activity in the selected timeframe are shown. Default is 1hr.')
+        dds_summary_jobs.add_argument('-d','--days',default=0,type=int,help='Modification time in days (default: %(default)s days)')
+        dds_summary_jobs.add_argument('-hr','--hours',default=1,type=int,help='Modification time in hours (default: %(default)s hour)')
+        dds_summary_jobs.add_argument('-m','--minutes',default=0,type=int,help='Modification time in minutes (default: %(default)s minutes)')
+        dds_summary_jobs.add_argument('-s','--seconds',default=0,type=int,help='Modification time in seconds (default: %(default)s seconds)')
         
        
         """ Job """
