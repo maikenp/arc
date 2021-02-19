@@ -1672,7 +1672,7 @@ if test "x$enables_xrootd" = "xyes"; then
   CPPFLAGS=$SAVE_CPPFLAGS
   SAVE_LDFLAGS=$LDFLAGS
   LDFLAGS="$LDFLAGS $XROOTD_LDFLAGS"
-  AC_CHECK_LIB([XrdPosix], [_init],
+  AC_CHECK_LIB([XrdPosix], [main],
                [XROOTD_LIBS="$XROOTD_LDFLAGS -lXrdPosix -lXrdCl"], [enables_xrootd="no"])
   LDFLAGS=$SAVE_LDFLAGS
 fi
@@ -2264,6 +2264,7 @@ AC_CONFIG_FILES([Makefile
                  src/services/a-rex/grid-manager/arc-blahp-logger.8
                  src/services/a-rex/grid-manager/gm-jobs.8
                  src/services/a-rex/grid-manager/gm-delegations-converter.8
+                 src/services/a-rex/rest/Makefile
                  src/services/a-rex/delegation/Makefile
                  src/services/a-rex/grid-manager/Makefile
                  src/services/a-rex/grid-manager/accounting/Makefile

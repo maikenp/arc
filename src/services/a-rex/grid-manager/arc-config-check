@@ -416,7 +416,7 @@ sub confchecktripel($$$) {
 sub check_logrotate($$$$) {
     my ($block, $name, $value, $defaultlocation) = @_;
     my $defaultlogpath = '/var/log/arc/';
-    my $defaultpidpath = '/var/run/';
+    my $defaultpidpath = '/run/';
     my $defaultlocations = {
                             'arexlogfile' => $defaultlogpath.'arex.log',
                             'arexpidfile' => $defaultpidpath.'arched-arex.pid',
@@ -861,7 +861,8 @@ sub check_certificates() {
 
 }
 
-
+# Add this warning when A-REX is enforcing new validator
+# w("*** This tool is DEPRECATED and will be REMOVED in a future ARC release. Please use 'arcctl config verify' instead. ***\n");
 timecheck($timeserver, 60, 0.01);
 confcheck($conffile);
 check_applications();

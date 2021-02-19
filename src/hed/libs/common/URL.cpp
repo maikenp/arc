@@ -19,6 +19,22 @@ namespace Arc {
 
   static Logger URLLogger(Logger::getRootLogger(), "URL");
 
+  static std::string::size_type FindProtocolSeparator(const std::string& url) {
+    // Looking for protocol separator
+    std::string::size_type pos = url.find(":");
+    if (pos != std::string::npos) {
+      // Check if protocol looks like protocol
+      for(std::string::size_type p = 0; p < pos; ++p) {
+        char c = url[p];
+        if(isalnum(c) || (c == '+') || (c == '-') || (c == '.')) continue;
+        pos = std::string::npos;
+        break;
+      }
+    }
+    return pos;
+  }
+
+
   std::map<std::string, std::string> URL::ParseOptions(const std::string& optstring, char separator, bool encoded) {
 
     std::map<std::string, std::string> options;
@@ -124,16 +140,7 @@ namespace Arc {
     }
 
     // Looking for protocol separator
-    pos = url.find(":");
-    if (pos != std::string::npos) {
-      // Check if protocol looks like protocol
-      for(std::string::size_type p = 0; p < pos; ++p) {
-        char c = url[p];
-        if(isalnum(c) || (c == '+') || (c == '-') || (c == '.')) continue;
-        pos = std::string::npos;
-        break;
-      }
-    }
+    pos = FindProtocolSeparator(url);
     if (pos == std::string::npos) {
       // URL does not start from protocol - must be simple path
       if (url[0] == '@') {
@@ -342,23 +349,34 @@ namespace Arc {
       if (protocol == "s3+https") port = S3_HTTPS_DEFAULT_PORT;
     }
 
-    if (protocol != "ldap" && protocol != "arc" && protocol.find("http") != 0 &&
+    // TODO: for ARC 7 move these metadata options into the normal ARC URL options
+    if (protocol != "ldap" && protocol != "arc" &&
         (protocol != "root" || path.find('?') == std::string::npos)) {
       pos2 = path.rfind('=');
       if (pos2 != std::string::npos) {
         pos3 = path.rfind(':', pos2);
         if (pos3 != std::string::npos) {
-          pos = pos3;
-          while (pos2 != std::string::npos && pos3 != std::string::npos) {
-            pos2 = path.rfind('=', pos);
-            if (pos2 != std::string::npos) {
-              pos3 = path.rfind(':', pos2);
-              if (pos3 != std::string::npos)
-                pos = pos3;
+          // Check that options are in the allowed list of metadata options
+          std::string option_name = path.substr(pos3+1, pos2-(pos3+1));
+          if (option_name == "checksumtype" || option_name == "checksumvalue" ||  option_name == "guid") {
+            pos = pos3;
+            while (pos2 != std::string::npos && pos3 != std::string::npos) {
+              pos2 = path.rfind('=', pos);
+              if (pos2 != std::string::npos) {
+                pos3 = path.rfind(':', pos2);
+                if (pos3 != std::string::npos) {
+                  option_name = path.substr(pos3+1, pos2-(pos3+1));
+                  if (option_name == "checksumtype" || option_name == "checksumvalue" ||  option_name == "guid") {
+                    pos = pos3;
+                  } else {
+                    break;
+                  }
+                }
+              }
             }
+            metadataoptions = ParseOptions(path.substr(pos + 1), ':', encoded);
+            path = path.substr(0, pos);
           }
-          metadataoptions = ParseOptions(path.substr(pos + 1), ':', encoded);
-          path = path.substr(0, pos);
         }
       }
     }
@@ -369,6 +387,21 @@ namespace Arc {
     host = lower(host);
   }
 
+  void URL::ChangeURL(const std::string& newurl, bool encoded) {
+    std::string::size_type pos = FindProtocolSeparator(newurl);
+    if(pos != std::string::npos) {
+      // Absolute URL
+      operator=(URL(newurl));
+      return;
+    }
+    // Path
+    if(newurl[0] == '/') {
+      // Absolute path
+      ChangeFullPath(newurl, encoded);
+      return;
+    }
+    ChangeFullPath(Path()+"/"+newurl);
+  }
 
   void URL::ParsePath(bool encoded) {
     std::string::size_type pos, pos2, pos3;
@@ -377,6 +410,8 @@ namespace Arc {
     if (protocol == "http" ||
         protocol == "https" ||
         protocol == "httpg" ||
+        protocol == "dav" ||
+        protocol == "davs" ||
         protocol == "arc" ||
         protocol == "srm" ||
         protocol == "root" ||
@@ -558,6 +593,7 @@ namespace Arc {
   }
 
   void URL::ChangeFullPath(const std::string& newpath, bool encoded) {
+    httpoptions.clear();
     path = newpath;
     ParsePath(encoded);
     std::string basepath = path;

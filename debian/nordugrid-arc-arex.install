@@ -70,21 +70,15 @@ debian/tmp/usr/share/man/man8/a-rex-backtrace-collect.8
 debian/tmp/usr/share/man/man8/arc-blahp-logger.8
 debian/tmp/usr/share/man/man8/gm-*.8
 
-<<<<<<< HEAD
-debian/tmp/usr/lib/python?.?/site-packages/arc/ssm/__init__.py*
-debian/tmp/usr/lib/python?.?/site-packages/arc/ssm/crypto.py*
-debian/tmp/usr/lib/python?.?/site-packages/arc/ssm/ssm2.py*
-=======
-debian/tmp/usr/lib/python?.?/site-packages/arc/ssm
+debian/tmp/usr/lib/python?.*/site-packages/arc/ssm
 
-debian/tmp/usr/lib/python?.?/site-packages/arc/control/AccountingDB.py*
-debian/tmp/usr/lib/python?.?/site-packages/arc/control/AccountingPublishing.py*
-debian/tmp/usr/lib/python?.?/site-packages/arc/control/Accounting.py*
-debian/tmp/usr/lib/python?.?/site-packages/arc/control/Cache.py*
-debian/tmp/usr/lib/python?.?/site-packages/arc/control/DataStaging.py*
-debian/tmp/usr/lib/python?.?/site-packages/arc/control/Jobs.py*
-debian/tmp/usr/lib/python?.?/site-packages/arc/control/RunTimeEnvironment.py*
->>>>>>> c5018e72b7bf0033628972954e48e77f602e04dc
+debian/tmp/usr/lib/python?.*/site-packages/arc/control/AccountingDB.py*
+debian/tmp/usr/lib/python?.*/site-packages/arc/control/AccountingPublishing.py*
+debian/tmp/usr/lib/python?.*/site-packages/arc/control/Accounting.py*
+debian/tmp/usr/lib/python?.*/site-packages/arc/control/Cache.py*
+debian/tmp/usr/lib/python?.*/site-packages/arc/control/DataStaging.py*
+debian/tmp/usr/lib/python?.*/site-packages/arc/control/Jobs.py*
+debian/tmp/usr/lib/python?.*/site-packages/arc/control/RunTimeEnvironment.py*
 
 debian/tmp/usr/lib/arc/arccandypond
 debian/tmp/usr/share/arc/rte/ENV/LRMS-SCRATCH
